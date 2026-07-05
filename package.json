@@ -1,7 +1,27 @@
 {
   "name": "mindmaplib",
   "version": "0.0.1",
+  "private": true,
   "description": "Embeddable mindmap engine for web apps. Drop-in interactive mind maps in any portal or application.",
+  "license": "MIT",
+  "author": "Andrew Arto",
+  "type": "module",
+  "packageManager": "pnpm@10.30.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint .",
+    "typecheck": "pnpm -r typecheck",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "build": "pnpm -r build",
+    "check-boundaries": "depcruise packages/core/src --config .dependency-cruiser.cjs",
+    "ci": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm check-boundaries",
+    "changeset": "changeset"
+  },
   "keywords": [
     "mindmap",
     "mind map",
@@ -14,18 +34,24 @@
     "diagram",
     "web component"
   ],
-  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+ssh://git@github.com/AndrewArto/mindmaplib.git"
   },
-  "author": "Andrew Arto",
-  "private": true,
-  "main": "src/index.js",
-  "files": [
-    "src",
-    "dist",
-    "README.md",
-    "LICENSE"
-  ]
+  "devDependencies": {
+    "@changesets/cli": "^2.31.0",
+    "@vitest/coverage-v8": "^4.1.9",
+    "dependency-cruiser": "^18.0.0",
+    "eslint": "^10.6.0",
+    "prettier": "^3.9.4",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.62.1",
+    "vitest": "^4.1.9"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
 }
