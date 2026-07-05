@@ -49,6 +49,15 @@ function pickNode(raw: unknown): MindmapNode {
 
   // Validate position coordinates — reject non-number or non-finite values
   // instead of coercing (Number(null) = 0 would silently move nodes to origin).
+  // position must be null or a proper {x,y} object — reject primitives
+  if (n.position !== null && n.position !== undefined) {
+    if (typeof n.position !== 'object') {
+      throw new MindmapError(
+        `deserialize: node '${n.id}' position is not an object`,
+        'MALFORMED_JSON',
+      )
+    }
+  }
   let position: MindmapNode['position'] = null
   if (n.position && typeof n.position === 'object') {
     const px = (n.position as { x?: unknown }).x
@@ -137,8 +146,15 @@ export function deserialize(json: string): MindmapDoc {
     )
   }
 
+  if (typeof d.id !== 'string' || d.id.length === 0) {
+    throw new MindmapError(
+      'deserialize: document id is missing or not a non-empty string',
+      'MALFORMED_JSON',
+    )
+  }
+
   const result: MindmapDoc = {
-    id: String(d.id ?? ''),
+    id: d.id,
     rootId: String(d.rootId ?? ''),
     nodes,
     version: rawVersion,

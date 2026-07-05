@@ -94,6 +94,12 @@ export function buildTransaction(
   opts?: { actorId?: string },
 ): Transaction {
   const flat = Array.isArray(ops) ? ops : [ops]
+  if (flat.length === 0) {
+    throw new MindmapError(
+      'buildTransaction: transaction must contain at least one op',
+      'INVALID_TRANSACTION',
+    )
+  }
   return {
     id: createId('tx'),
     baseVersion: doc.version,
