@@ -73,7 +73,7 @@ export function deserialize(json: string): MindmapDoc {
       'SCHEMA_MISMATCH',
     )
   }
-  if (wrapper.schemaVersion > SCHEMA_VERSION) {
+  if (wrapper.schemaVersion !== SCHEMA_VERSION) {
     throw new MindmapError(
       `deserialize: unsupported schemaVersion ${wrapper.schemaVersion} (current ${SCHEMA_VERSION})`,
       'SCHEMA_MISMATCH',
@@ -97,11 +97,23 @@ export function deserialize(json: string): MindmapDoc {
   }
 
   const meta = (d.meta ?? {}) as Record<string, unknown>
+  const rawVersion = Number(d.version ?? 0)
+  if (
+    !Number.isFinite(rawVersion) ||
+    rawVersion < 0 ||
+    !Number.isInteger(rawVersion)
+  ) {
+    throw new MindmapError(
+      `deserialize: invalid document version ${JSON.stringify(d.version)}`,
+      'MALFORMED_JSON',
+    )
+  }
+
   const result: MindmapDoc = {
     id: String(d.id ?? ''),
     rootId: String(d.rootId ?? ''),
     nodes,
-    version: Number(d.version ?? 0),
+    version: rawVersion,
     meta: {
       title: String(meta.title ?? ''),
       created: String(meta.created ?? ''),

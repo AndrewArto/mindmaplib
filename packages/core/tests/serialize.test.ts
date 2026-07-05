@@ -55,6 +55,29 @@ describe('serialize / deserialize', () => {
     expect(() => deserialize(noVer)).toThrow(MindmapError)
   })
 
+  it('throws SCHEMA_MISMATCH on schemaVersion 0 (P2 r3)', () => {
+    const v0 = JSON.stringify({ schemaVersion: 0, doc: createDoc('Z') })
+    expect(() => deserialize(v0)).toThrow(MindmapError)
+    try {
+      deserialize(v0)
+    } catch (e) {
+      expect((e as MindmapError).code).toBe('SCHEMA_MISMATCH')
+    }
+  })
+
+  it('throws MALFORMED_JSON on non-integer version (P2 r3)', () => {
+    const doc = createDoc('V')
+    const json = serialize(doc)
+    const wrapper = JSON.parse(json)
+    wrapper.doc.version = 'not-a-number'
+    expect(() => deserialize(JSON.stringify(wrapper))).toThrow(MindmapError)
+    try {
+      deserialize(JSON.stringify(wrapper))
+    } catch (e) {
+      expect((e as MindmapError).code).toBe('MALFORMED_JSON')
+    }
+  })
+
   it('strips unknown fields (forward-compatible)', () => {
     const doc = createDoc('Strip')
     const json = serialize(doc)
