@@ -159,9 +159,9 @@ describe('applyTransaction', () => {
     const tx = { ...buildTransaction(doc, createAddNodeOp(doc.rootId, 'a')) }
     const advanced = applyTransaction(doc, tx) // version now 1
     // tx.baseVersion is 0, advanced.version is 1
-    expect(() =>
-      applyTransaction(advanced, tx, { strict: true }),
-    ).toThrow(VersionConflictError)
+    expect(() => applyTransaction(advanced, tx, { strict: true })).toThrow(
+      VersionConflictError,
+    )
   })
 
   it('applies regardless of baseVersion when not strict (default)', () => {

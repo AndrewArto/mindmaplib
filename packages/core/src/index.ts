@@ -66,3 +66,19 @@ export {
   applyOp,
   applyTransaction,
 } from './transactions.js'
+
+// --- Validation ---
+export { validateDoc } from './validation.js'
+
+// --- Layout ---
+export { computeLayoutOps } from './layout.js'
+
+// --- Serialization ---
+export { serialize, deserialize, SCHEMA_VERSION } from './serialize.js'
+
+// --- Store ---
+export { InMemoryStore } from './store.js'
+
+// --- Editor ---
+export { MindmapEditor } from './editor.js'
+export type { MindmapEditorOptions } from './editor.js'

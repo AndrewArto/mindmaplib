@@ -1,0 +1,335 @@
+// MindmapEditor: the stateful controller (MML-B-0001 § Public API Surface).
+//
+// Holds the current doc, UI state (selection, editing, viewport), undo/redo
+// ring buffer, and optional store connection. The React adapter binds to this
+// exclusively. Undo/redo count as new document revisions (version increments).
+
+import type {
+  EditorState,
+  LayoutMode,
+  MindmapDoc,
+  MindmapStore,
+  NodeContent,
+  Position,
+  Transaction,
+} from './types.js'
+import { MindmapError } from './errors.js'
+import { createId } from './id.js'
+import {
+  applyTransaction,
+  buildTransaction,
+  createAddNodeOp,
+  createDeleteNodeOp,
+  createMoveNodeOp,
+  createResetManualPositionOp,
+  createSetPositionOp,
+  createToggleCollapsedOp,
+  createUpdateContentOp,
+} from './transactions.js'
+import { computeLayoutOps } from './layout.js'
+
+export interface MindmapEditorOptions {
+  store?: MindmapStore
+  undoLimit?: number
+}
+
+const DEFAULT_UNDO_LIMIT = 100
+
+/**
+ * Stateful mindmap editor: owns the document, UI state, undo/redo history,
+ * and optional persistence.
+ */
+export class MindmapEditor {
+  private doc: MindmapDoc
+  private selectedNodeId: string | null = null
+  private editingNodeId: string | null = null
+  private viewport: { x: number; y: number; zoom: number } = {
+    x: 0,
+    y: 0,
+    zoom: 1,
+  }
+  private layoutMode: LayoutMode = 'free-float'
+
+  private undoStack: MindmapDoc[] = []
+  private redoStack: MindmapDoc[] = []
+  private readonly undoLimit: number
+  private readonly store?: MindmapStore
+  private lastSavedVersion: number
+
+  private readonly listeners = new Set<(state: EditorState) => void>()
+
+  constructor(initialDoc: MindmapDoc, options?: MindmapEditorOptions) {
+    this.doc = initialDoc
+    this.store = options?.store
+    this.undoLimit = options?.undoLimit ?? DEFAULT_UNDO_LIMIT
+    this.lastSavedVersion = initialDoc.version
+  }
+
+  // --- Document access -------------------------------------------------
+
+  getDoc(): MindmapDoc {
+    return this.doc
+  }
+
+  getState(): EditorState {
+    return {
+      doc: this.doc,
+      selectedNodeId: this.selectedNodeId,
+      editingNodeId: this.editingNodeId,
+      viewport: { ...this.viewport },
+      layoutMode: this.layoutMode,
+    }
+  }
+
+  // --- Mutations -------------------------------------------------------
+
+  apply(tx: Transaction, opts?: { strict?: boolean }): void {
+    const next = applyTransaction(this.doc, tx, opts)
+    this.pushUndo(this.doc)
+    this.redoStack = []
+    this.doc = next
+    this.notify()
+  }
+
+  addChild(
+    parentId: string,
+    opts?: { insertAfter?: string | null; content?: NodeContent },
+  ): string {
+    const nodeId = createId('node')
+    this.apply(
+      buildTransaction(this.doc, createAddNodeOp(parentId, nodeId, opts)),
+    )
+    return nodeId
+  }
+
+  addSibling(siblingId: string, content?: NodeContent): string {
+    const sibling = this.doc.nodes[siblingId]
+    if (!sibling) {
+      throw new MindmapError(
+        `addSibling: node ${siblingId} not found`,
+        'NODE_NOT_FOUND',
+        siblingId,
+      )
+    }
+    if (sibling.parentId === null) {
+      throw new MindmapError(
+        'addSibling: cannot add a sibling of the root node',
+        'ROOT_IMMUTABLE',
+        siblingId,
+      )
+    }
+    return this.addChild(sibling.parentId, { insertAfter: siblingId, content })
+  }
+
+  deleteNode(nodeId: string): void {
+    this.apply(buildTransaction(this.doc, createDeleteNodeOp(nodeId)))
+  }
+
+  moveNode(
+    nodeId: string,
+    newParentId: string,
+    insertAfter?: string | null,
+  ): void {
+    this.apply(
+      buildTransaction(
+        this.doc,
+        createMoveNodeOp(nodeId, newParentId, insertAfter),
+      ),
+    )
+  }
+
+  promoteNode(nodeId: string): void {
+    const node = this.doc.nodes[nodeId]
+    if (!node) {
+      throw new MindmapError(
+        `promoteNode: node ${nodeId} not found`,
+        'NODE_NOT_FOUND',
+        nodeId,
+      )
+    }
+    if (node.parentId === null) return // root: cannot promote
+    const parent = this.doc.nodes[node.parentId]
+    if (!parent || parent.parentId === null) return // parent is root: cannot promote above
+    this.moveNode(nodeId, parent.parentId, parent.id)
+  }
+
+  updateContent(nodeId: string, content: NodeContent): void {
+    this.apply(
+      buildTransaction(this.doc, createUpdateContentOp(nodeId, content)),
+    )
+  }
+
+  setPosition(nodeId: string, position: Position): void {
+    this.apply(
+      buildTransaction(this.doc, createSetPositionOp(nodeId, position)),
+    )
+  }
+
+  resetManualPosition(nodeId: string): void {
+    this.apply(buildTransaction(this.doc, createResetManualPositionOp(nodeId)))
+  }
+
+  toggleCollapsed(nodeId: string): void {
+    this.apply(buildTransaction(this.doc, createToggleCollapsedOp(nodeId)))
+  }
+
+  // --- Selection and editing ------------------------------------------
+
+  select(nodeId: string | null): void {
+    this.selectedNodeId = nodeId
+    this.notify()
+  }
+
+  startEditing(nodeId: string): void {
+    this.editingNodeId = nodeId
+    this.notify()
+  }
+
+  stopEditing(): void {
+    this.editingNodeId = null
+    this.notify()
+  }
+
+  // --- Viewport --------------------------------------------------------
+
+  setViewport(viewport: { x: number; y: number; zoom: number }): void {
+    this.viewport = { ...viewport }
+    this.notify()
+  }
+
+  /** Compute a viewport that fits all positioned nodes (best-effort, PoC). */
+  fitToScreen(): void {
+    const positioned = Object.values(this.doc.nodes).filter(
+      (n) => n.position !== null,
+    )
+    if (positioned.length === 0) {
+      this.setViewport({ x: 0, y: 0, zoom: 1 })
+      return
+    }
+    const nodeW = 120
+    const nodeH = 40
+    let minX = Infinity
+    let minY = Infinity
+    let maxX = -Infinity
+    let maxY = -Infinity
+    for (const n of positioned) {
+      const p = n.position!
+      minX = Math.min(minX, p.x)
+      minY = Math.min(minY, p.y)
+      maxX = Math.max(maxX, p.x + nodeW)
+      maxY = Math.max(maxY, p.y + nodeH)
+    }
+    const width = Math.max(maxX - minX, 1)
+    const height = Math.max(maxY - minY, 1)
+    const canvasW = 800
+    const canvasH = 600
+    const zoom = Math.min(canvasW / width, canvasH / height, 1)
+    const x = (canvasW - width * zoom) / 2 - minX * zoom
+    const y = (canvasH - height * zoom) / 2 - minY * zoom
+    this.setViewport({ x, y, zoom })
+  }
+
+  // --- Layout ----------------------------------------------------------
+
+  setLayout(mode: LayoutMode): void {
+    const ops = computeLayoutOps(this.doc, mode)
+    if (ops.length > 0) {
+      this.apply(buildTransaction(this.doc, ops))
+    }
+    this.layoutMode = mode
+    this.notify()
+  }
+
+  // --- Undo / redo -----------------------------------------------------
+
+  undo(): void {
+    if (this.undoStack.length === 0) return
+    this.redoStack.push(this.doc)
+    const prev = this.undoStack.pop()!
+    this.doc = this.bumpRevision(prev)
+    this.notify()
+  }
+
+  redo(): void {
+    if (this.redoStack.length === 0) return
+    this.undoStack.push(this.doc)
+    const next = this.redoStack.pop()!
+    this.doc = this.bumpRevision(next)
+    this.notify()
+  }
+
+  canUndo(): boolean {
+    return this.undoStack.length > 0
+  }
+
+  canRedo(): boolean {
+    return this.redoStack.length > 0
+  }
+
+  // --- Store integration ----------------------------------------------
+
+  isDirty(): boolean {
+    return this.doc.version !== this.lastSavedVersion
+  }
+
+  async save(): Promise<void> {
+    if (!this.store) return
+    const result = await this.store.save(this.doc, {
+      expectedVersion: this.lastSavedVersion,
+    })
+    if (result.saved) {
+      this.lastSavedVersion = this.doc.version
+    }
+  }
+
+  async load(docId: string): Promise<void> {
+    if (!this.store) return
+    const loaded = await this.store.load(docId)
+    if (!loaded) return
+    this.doc = loaded
+    this.undoStack = []
+    this.redoStack = []
+    this.selectedNodeId = null
+    this.editingNodeId = null
+    this.lastSavedVersion = loaded.version
+    this.notify()
+  }
+
+  // --- Subscription ----------------------------------------------------
+
+  subscribe(listener: (state: EditorState) => void): () => void {
+    this.listeners.add(listener)
+    return () => {
+      this.listeners.delete(listener)
+    }
+  }
+
+  destroy(): void {
+    this.listeners.clear()
+  }
+
+  // --- Internal --------------------------------------------------------
+
+  private pushUndo(doc: MindmapDoc): void {
+    this.undoStack.push(doc)
+    while (this.undoStack.length > this.undoLimit) {
+      this.undoStack.shift()
+    }
+  }
+
+  /** Increment version + refresh meta.updated (undo/redo revision bump). */
+  private bumpRevision(doc: MindmapDoc): MindmapDoc {
+    return {
+      ...doc,
+      version: doc.version + 1,
+      meta: { ...doc.meta, updated: new Date().toISOString() },
+    }
+  }
+
+  private notify(): void {
+    const state = this.getState()
+    for (const listener of this.listeners) {
+      listener(state)
+    }
+  }
+}
