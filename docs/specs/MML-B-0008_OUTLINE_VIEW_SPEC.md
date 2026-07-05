@@ -155,10 +155,11 @@ function buildVisibleList(doc: MindmapDoc): string[] {
 
 4. Each `OutlineItem` is a flat row — no children, no recursion. Wrapped
    in `React.memo` comparing `node` reference, `isSelected`, `isEditing`,
-   `depth`, and `isFocused` (boolean: is this row the roving-tabindex target?).
-   When a branch is moved, rows need updated indentation/`aria-level` even
-   though the `node` object is unchanged (structural sharing). Without `depth`
-   in the comparator, those rows would be stale.
+   `depth`, `isFocused` (boolean), `posInSet` (1-based index among siblings),
+   and `setSize` (total siblings). When nodes are reordered or moved,
+   `childOrder` changes alter `aria-posinset`/`aria-setsize` for sibling rows
+   whose `node` reference and `depth` stay unchanged. Without `posInSet` and
+   `setSize` in the comparator, those rows would have stale ARIA metadata.
 
    Performance note: pass `isFocused` as a per-row boolean (not a global
    `focusedId` string). Comparing a global `focusedId` means every row sees a
@@ -410,7 +411,7 @@ draggedId)`. Returns `null` if rejected (root before/after, or target is a
 function handleDrop(
   draggedId: string,
   targetId: string,
-  zone: 'before' | 'after' | 'inside',
+  zone: 'before' | 'after' | 'inside' | null,
 ) {
   if (draggedId === targetId) return // no-op
   if (zone === null) return // rejected by getDropZone (root sibling or descendant)
