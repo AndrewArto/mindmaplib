@@ -539,11 +539,11 @@ Implements MML-B-0004 for the outline view.
 
 ### ARIA Roles
 
-| Element          | Role       | Attributes                                     |
-| ---------------- | ---------- | ---------------------------------------------- |
-| OutlineTree      | `tree`     | `aria-label="Mindmap outline"`                 |
-| OutlineItem      | `treeitem` | `aria-expanded`, `aria-level`, `aria-selected` |
-| Children wrapper | `group`    | owned by parent `treeitem`                     |
+| Element      | Role       | Attributes                                        |
+| ------------ | ---------- | ------------------------------------------------- |
+| OutlineTree  | `tree`     | `aria-label="Mindmap outline"`                    |
+| OutlineItem  | `treeitem` | `aria-expanded`, `aria-level`, `aria-selected`    |
+| (flat items) | `treeitem` | `aria-posinset`, `aria-setsize` for sibling order |
 
 ### ARIA Attributes
 
@@ -606,7 +606,9 @@ Indentation is achieved via `padding-left` based on `aria-level`:
 }
 ```
 
-The `--mml-level` CSS variable is set via inline style from the node's depth.
+The `--mml-level` CSS variable is set via inline style to
+`depth + 1` (1-based, matching `aria-level`). The root has
+`--mml-level: 1`, producing zero indentation.
 
 ## Component Props
 
