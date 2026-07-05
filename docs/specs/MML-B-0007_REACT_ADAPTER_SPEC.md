@@ -153,7 +153,18 @@ function useEditor(editor: MindmapEditor): EditorState
 // Keyboard navigation handler. Returns a set of keyboard event handlers to
 // spread onto the canvas container. Suspended automatically when
 // state.editingNodeId is set (TipTap handles keyboard during editing).
-function useKeyboard(editor: MindmapEditor): KeyboardHandlers
+//
+// IMPORTANT: the Escape key during editing must persist TipTap content before
+// clearing editingNodeId. But the TipTap instance lives inside NodeView, not
+// in the keyboard hook's scope. To bridge this, the adapter registers an
+// exitEditMode callback via React context or a ref that NodeView populates
+// on mount (when it creates the TipTap instance) and clears on unmount.
+// The keyboard hook calls this callback on Escape, not editor.stopEditing()
+// directly.
+function useKeyboard(
+  editor: MindmapEditor,
+  exitEditModeRef: RefObject<(() => void) | null>,
+): KeyboardHandlers
 
 // Node measurement via ResizeObserver. Observes rendered node DOM elements,
 // reports measured sizes to the editor for layout computation. Debounced.
@@ -236,13 +247,14 @@ The critical performance constraint: render 500+ nodes without lag.
    rendered in the DOM at all. The culling threshold accounts for current
    zoom level and viewport bounds.
 
-3. **Memoized node components.** `<NodeView>` is wrapped in `React.memo` with a
-   custom comparator that checks `node` reference identity (structural sharing
+3. **Memoized node components.** `<NodeView>` is wrapped in `React.memo` with
+   a custom comparator that checks `node` reference identity (structural sharing
    from immutable updates means unchanged nodes keep their reference),
-   `isEditing` flag, and `isSelected` flag. Without `isSelected`, selection
-   changes (which only update `selectedNodeId`, not node references) would not
-   trigger re-render, leaving `mml-node--selected` stale. Unchanged nodes skip
-   re-render entirely.
+   `isEditing` flag, `isSelected` flag, AND the precomputed `html` string. If
+   the host changes `tiptapExtensions` or `customNodeRenderer`, the recomputed
+   `html` value (from `useMemo`) changes its reference, invalidating the memo.
+   Without including `html`, nodes would render stale sanitized output until
+   their node data changed. Unchanged nodes skip re-render entirely.
 
 4. **Single transform on the container.** The nodes-layer and SVG layer are
    children of one container that applies the viewport CSS transform. Pan/zoom
@@ -564,15 +576,42 @@ function OutlineView({ editor }: { editor: MindmapEditor }) {
   )
 }
 
-function OutlineItem({ node, editor, level }: OutlineItemProps) {
+// OutlineView subscribes ONCE to the editor and passes doc + selection down
+// to items as props. OutlineItem must NOT call useEditor — 500 items with
+// individual subscriptions would create 500 listeners, each firing on every
+// state change, defeating the 500-node performance target.
+function OutlineView({ editor }: { editor: MindmapEditor }) {
   const state = useEditor(editor)
-  const children = getChildren(state.doc, node.id)
+  const root = state.doc.nodes[state.doc.rootId]
+  return (
+    <div className="mml-outline" role="tree">
+      <OutlineItem
+        node={root}
+        doc={state.doc}
+        editor={editor}
+        selectedId={state.selectedNodeId}
+        level={0}
+      />
+    </div>
+  )
+}
+
+function OutlineItem({
+  node,
+  doc,
+  editor,
+  selectedId,
+  level,
+}: OutlineItemProps) {
+  const children = getChildren(doc, node.id)
   const isExpanded = !node.collapsed
+  const isSelected = node.id === selectedId
   return (
     <div
       role="treeitem"
       aria-expanded={children.length > 0 ? isExpanded : undefined}
       aria-level={level + 1}
+      aria-selected={isSelected}
     >
       <div className="mml-outline-row">
         {children.length > 0 && (
@@ -589,7 +628,9 @@ function OutlineItem({ node, editor, level }: OutlineItemProps) {
           <OutlineItem
             key={child.id}
             node={child}
+            doc={doc}
             editor={editor}
+            selectedId={selectedId}
             level={level + 1}
           />
         ))}
@@ -657,7 +698,8 @@ function onKeyDown(e: React.KeyboardEvent<HTMLElement>) {
       // converts to NodeContent, calls editor.updateContent(), then
       // calls editor.stopEditing(). This prevents losing unsaved edits
       // when the editor unmounts.
-      exitEditMode()
+      const fn = exitEditModeRef.current
+      if (fn) fn()
       e.preventDefault()
     }
     return
