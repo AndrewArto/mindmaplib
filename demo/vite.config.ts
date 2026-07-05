@@ -1,5 +1,4 @@
 import { defineConfig } from 'vite'
-import { cpSync } from 'fs'
 
 export default defineConfig({
   root: '.',

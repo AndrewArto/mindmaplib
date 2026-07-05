@@ -42,9 +42,6 @@ importers:
         specifier: workspace:*
         version: link:../packages/core
     devDependencies:
-      esbuild:
-        specifier: ^0.25.0
-        version: 0.25.12
       typescript:
         specifier: ^5.7.0
         version: 5.9.3
