@@ -1,0 +1,384 @@
+:root {
+  --paper: #f6f4ef;
+  --paper-2: #f1eee6;
+  --card: #ffffff;
+  --ink: #16181d;
+  --text: #4c4f57;
+  --muted: #9b9da4;
+  --accent: #21426f;
+  --accent-soft: #355585;
+  --line: #e6e2d9;
+  --line-strong: #d6d1c5;
+  --shadow:
+    0 1px 2px rgba(22, 24, 29, 0.04), 0 14px 32px -18px rgba(22, 24, 29, 0.16);
+  --shadow-h:
+    0 1px 2px rgba(22, 24, 29, 0.05), 0 22px 44px -20px rgba(22, 24, 29, 0.24);
+  --radius: 8px;
+  --radius-sm: 6px;
+  --font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font);
+  background: var(--paper);
+  color: var(--text);
+  overflow: hidden;
+  height: 100vh;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* --- Toolbar --- */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: var(--card);
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+  z-index: 10;
+}
+
+.toolbar-title {
+  font-weight: 600;
+  color: var(--ink);
+  font-size: 15px;
+  margin-right: auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 300px;
+}
+
+.toolbar input.title-input {
+  font-family: var(--font);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  margin-right: auto;
+  max-width: 280px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.toolbar input.title-input:hover {
+  border-color: var(--line);
+}
+
+.toolbar input.title-input:focus {
+  border-color: var(--accent);
+  background: var(--card);
+}
+
+.toolbar-group {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.toolbar-divider {
+  width: 1px;
+  height: 24px;
+  background: var(--line);
+  margin: 0 4px;
+}
+
+.btn {
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  color: var(--text);
+  cursor: pointer;
+  transition: all 0.12s ease;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  user-select: none;
+}
+
+.btn:hover {
+  border-color: var(--line-strong);
+  background: var(--paper-2);
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(33, 66, 111, 0.06);
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.btn-primary:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent-soft);
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.save-indicator {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 400;
+  min-width: 60px;
+  text-align: right;
+}
+
+.save-indicator.saving {
+  color: var(--accent);
+}
+
+.save-indicator.saved {
+  color: #4a7a4a;
+}
+
+.save-indicator.dirty {
+  color: var(--muted);
+}
+
+/* --- Canvas --- */
+
+.canvas-container {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background: var(--paper);
+  cursor: grab;
+}
+
+.canvas-container.panning {
+  cursor: grabbing;
+}
+
+.canvas-viewport {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  transform-origin: 0 0;
+}
+
+.canvas-edges {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.canvas-nodes {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+/* --- Nodes --- */
+
+.mindmap-node {
+  position: absolute;
+  min-width: 80px;
+  max-width: 240px;
+  padding: 8px 14px;
+  background: var(--card);
+  border: 2px solid var(--line);
+  border-radius: var(--radius);
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--ink);
+  cursor: pointer;
+  user-select: none;
+  transition:
+    border-color 0.12s,
+    box-shadow 0.12s;
+  word-wrap: break-word;
+  box-shadow: var(--shadow);
+}
+
+.mindmap-node:hover {
+  border-color: var(--line-strong);
+}
+
+.mindmap-node.selected {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-h);
+}
+
+.mindmap-node.root {
+  border-color: var(--accent);
+  border-width: 2px;
+  font-weight: 600;
+  font-size: 15px;
+  background: var(--card);
+}
+
+.mindmap-node.editing {
+  cursor: text;
+  border-color: var(--accent);
+  box-shadow: var(--shadow-h);
+}
+
+.mindmap-node textarea {
+  font-family: var(--font);
+  font-size: 14px;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--ink);
+  resize: none;
+  width: 100%;
+  min-width: 80px;
+  padding: 0;
+  line-height: 1.4;
+  overflow: hidden;
+}
+
+.mindmap-node.root textarea {
+  font-weight: 600;
+  font-size: 15px;
+}
+
+/* --- Session list overlay --- */
+
+.session-list {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-h);
+  padding: 24px 32px;
+  min-width: 380px;
+  max-width: 500px;
+  z-index: 20;
+}
+
+.session-list h2 {
+  color: var(--ink);
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+
+.session-list ul {
+  list-style: none;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.session-list li {
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  margin-bottom: 6px;
+  cursor: pointer;
+  transition: all 0.12s;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.session-list li:hover {
+  border-color: var(--accent);
+  background: rgba(33, 66, 111, 0.04);
+}
+
+.session-list .session-title {
+  font-weight: 500;
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.session-list .session-meta {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.session-list .session-delete {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 4px;
+  font-size: 16px;
+  border-radius: 4px;
+}
+
+.session-list .session-delete:hover {
+  color: #c44;
+}
+
+.session-empty {
+  text-align: center;
+  color: var(--muted);
+  padding: 20px;
+  font-size: 14px;
+}
+
+/* --- Edge paths --- */
+
+.edge {
+  fill: none;
+  stroke: var(--line-strong);
+  stroke-width: 2;
+}
+
+/* --- Hints --- */
+
+.hints {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.6;
+  z-index: 5;
+  box-shadow: var(--shadow);
+}
+
+.hints kbd {
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-family: var(--font);
+  font-size: 10px;
+  color: var(--text);
+}

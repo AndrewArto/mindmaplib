@@ -116,7 +116,7 @@ proof.
 Minimum for any code change:
 
 ```bash
-pnpm format --check
+pnpm format:check
 pnpm lint
 pnpm typecheck
 pnpm test
@@ -229,7 +229,7 @@ Never run `npm publish` manually. Never publish from a feature branch.
 
 | Gate       | Command                 | What it checks                     |
 | ---------- | ----------------------- | ---------------------------------- |
-| Format     | `pnpm format --check`   | Prettier formatting                |
+| Format     | `pnpm format:check`     | Prettier formatting                |
 | Lint       | `pnpm lint`             | ESLint, zero warnings              |
 | Typecheck  | `pnpm typecheck`        | tsc --noEmit, strict, all packages |
 | Unit tests | `pnpm test`             | Vitest, all packages               |

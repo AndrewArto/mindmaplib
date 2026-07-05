@@ -300,6 +300,10 @@ export function applyOp(doc: MindmapDoc, op: TransactionOp): MindmapDoc {
           op.nodeId,
         )
       }
+      // Moving a node to the position after itself is a no-op reorder.
+      if (op.insertAfter === op.nodeId && op.newParentId === node.parentId) {
+        break
+      }
       // remove from old parent childOrder
       if (node.parentId) {
         const oldParent = next.nodes[node.parentId]
@@ -311,9 +315,11 @@ export function applyOp(doc: MindmapDoc, op: TransactionOp): MindmapDoc {
       }
       // set new parentId + insert into new parent childOrder
       replaceNode(next, op.nodeId, { parentId: op.newParentId })
+      // Re-read newParent childOrder (may have been mutated above for same-parent moves)
+      const targetOrder = next.nodes[op.newParentId]!.childOrder
       replaceNode(next, op.newParentId, {
         childOrder: insertIntoChildOrder(
-          newParent.childOrder,
+          targetOrder,
           op.nodeId,
           op.insertAfter,
         ),
