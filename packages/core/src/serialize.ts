@@ -32,6 +32,21 @@ function pickNode(raw: unknown): MindmapNode {
     )
   }
   const n = raw as Record<string, unknown>
+
+  // Validate required fields — reject instead of coercing fabrications.
+  if (typeof n.id !== 'string' || n.id.length === 0) {
+    throw new MindmapError(
+      'deserialize: node id is missing or not a non-empty string',
+      'MALFORMED_JSON',
+    )
+  }
+  if (n.parentId !== null && typeof n.parentId !== 'string') {
+    throw new MindmapError(
+      `deserialize: node '${n.id}' parentId is not a string or null`,
+      'MALFORMED_JSON',
+    )
+  }
+
   const position =
     n.position && typeof n.position === 'object'
       ? ({
@@ -40,13 +55,8 @@ function pickNode(raw: unknown): MindmapNode {
         } as MindmapNode['position'])
       : null
   return {
-    id: String(n.id),
-    parentId:
-      n.parentId === null
-        ? null
-        : n.parentId != null
-          ? String(n.parentId)
-          : null,
+    id: n.id,
+    parentId: n.parentId as string | null,
     position,
     manualPosition: Boolean(n.manualPosition),
     content: normalizeContent(n.content as NodeContent | undefined),

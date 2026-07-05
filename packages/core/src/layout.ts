@@ -41,6 +41,26 @@ export function computeLayoutOps(
   const spacingX = options?.spacingX ?? 40
   const spacingY = options?.spacingY ?? 20
 
+  // If nodeMeasures are provided, derive effective sizes from the max
+  // measured dimensions so spacing adapts to actual node sizes.
+  const measures = options?.nodeMeasures
+  let effectiveSize = defaultNodeSize
+  if (measures) {
+    const vals = Object.values(measures)
+    if (vals.length > 0) {
+      effectiveSize = {
+        width: Math.max(
+          Math.max(...vals.map((m) => m.width)),
+          defaultNodeSize.width,
+        ),
+        height: Math.max(
+          Math.max(...vals.map((m) => m.height)),
+          defaultNodeSize.height,
+        ),
+      }
+    }
+  }
+
   const rootData = doc.nodes[doc.rootId]
   if (!rootData) return []
 
@@ -58,12 +78,12 @@ export function computeLayoutOps(
   // width + spacingX (otherwise 120px-wide nodes overlap at 60px intervals).
   const siblingW =
     mode === 'tree-horizontal'
-      ? defaultNodeSize.height + spacingY
-      : defaultNodeSize.width + spacingX
+      ? effectiveSize.height + spacingY
+      : effectiveSize.width + spacingX
   const depthW =
     mode === 'tree-horizontal'
-      ? defaultNodeSize.width + spacingX
-      : defaultNodeSize.height + spacingY
+      ? effectiveSize.width + spacingX
+      : effectiveSize.height + spacingY
 
   // Lay out. For radial, size() maps the full tree into the given box.
   // Total radius = maxDepth * depthW so each depth level is one depthW apart.
