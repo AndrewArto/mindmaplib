@@ -255,12 +255,17 @@ The `OutlineToolbar` (if `showToolbar` prop is true) provides:
   are toggled — idempotent. Single transaction.
 
 ```typescript
-function collapseAll(editor: MindmapEditor): void {
+function collapseAll(
+  editor: MindmapEditor,
+  setEphemeralExpand: (s: Set<string>) => void,
+): void {
   const doc = editor.getDoc()
   const ops = Object.values(doc.nodes)
     .filter((n) => !n.collapsed && n.childOrder.length > 0)
     .map((n) => createToggleCollapsedOp(n.id))
   if (ops.length > 0) editor.apply(buildTransaction(doc, ops))
+  // Clear ephemeral expansions — they would keep branches visible after collapse.
+  setEphemeralExpand(new Set())
 }
 
 function expandAll(editor: MindmapEditor): void {
@@ -660,13 +665,15 @@ function getEffectiveExpanded(
   node: MindmapNode,
   searchActive: boolean,
   filteredVisibleIds: Set<string>,
+  ephemeralExpand: Set<string>,
 ): boolean | undefined {
   if (node.childOrder.length === 0) return undefined // leaf
   if (searchActive) {
     // During search, expanded = children are visible in filtered list.
     return node.childOrder.some((childId) => filteredVisibleIds.has(childId))
   }
-  return !node.collapsed
+  // Normal mode: persisted flag OR ephemerally expanded (auto-reveal)
+  return !node.collapsed || ephemeralExpand.has(node.id)
 }
 ```
 
