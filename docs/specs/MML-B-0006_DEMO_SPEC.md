@@ -86,26 +86,30 @@ CREATE TABLE sessions (
 
 ## API Surface (Pages Function)
 
-| Method | Path | Body | Response |
-|--------|------|------|----------|
-| GET | `/api/sessions` | — | `MindmapDocMeta[]` |
-| POST | `/api/sessions` | `{doc: SerializedDoc}` | `{id, title, version}` (creates if no id) |
-| GET | `/api/sessions/:id` | — | `{doc: SerializedDoc}` |
-| PUT | `/api/sessions/:id` | `{doc: SerializedDoc, expectedVersion}` | `{saved, conflict, currentVersion}` |
-| DELETE | `/api/sessions/:id` | — | `{deleted: true}` |
+| Method | Path                | Body                                    | Response                                  |
+| ------ | ------------------- | --------------------------------------- | ----------------------------------------- |
+| GET    | `/api/sessions`     | —                                       | `MindmapDocMeta[]`                        |
+| POST   | `/api/sessions`     | `{doc: SerializedDoc}`                  | `{id, title, version}` (creates if no id) |
+| GET    | `/api/sessions/:id` | —                                       | `{doc: SerializedDoc}`                    |
+| PUT    | `/api/sessions/:id` | `{doc: SerializedDoc, expectedVersion}` | `{saved, conflict, currentVersion}`       |
+| DELETE | `/api/sessions/:id` | —                                       | `{deleted: true}`                         |
 
 ## Design tokens (from tripleadigital.io)
 
 ```css
---paper:   #f6f4ef;  /* page background */
---card:    #ffffff;  /* node background */
---ink:     #16181d;  /* node text */
---text:    #4c4f57;  /* body text */
---muted:   #9b9da4;  /* secondary text */
---accent:  #21426f;  /* navy accent, root node, selection */
---line:    #e6e2d9;  /* node border, canvas edges */
---shadow:  0 1px 2px rgba(22,24,29,0.04), 0 14px 32px -18px rgba(22,24,29,0.16);
-font: 'Inter', -apple-system, sans-serif;
+--paper: #f6f4ef; /* page background */
+--card: #ffffff; /* node background */
+--ink: #16181d; /* node text */
+--text: #4c4f57; /* body text */
+--muted: #9b9da4; /* secondary text */
+--accent: #21426f; /* navy accent, root node, selection */
+--line: #e6e2d9; /* node border, canvas edges */
+--shadow:
+  0 1px 2px rgba(22, 24, 29, 0.04), 0 14px 32px -18px rgba(22, 24, 29, 0.16);
+font:
+  'Inter',
+  -apple-system,
+  sans-serif;
 ```
 
 ## Acceptance Criteria
