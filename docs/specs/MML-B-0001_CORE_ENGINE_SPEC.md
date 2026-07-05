@@ -1,6 +1,6 @@
 # mindmaplib Core Engine Specification
 
-Status: draft.
+Status: accepted.
 Date: 2026-07-05.
 Owner: Andrew Arto.
 Spec-ID: MML-B-0001.
@@ -441,7 +441,6 @@ function createSetPositionOp(nodeId: string, position: { x: number; y: number })
 function createLayoutPositionOp(nodeId: string, position: { x: number; y: number }): TransactionOp
 function createResetManualPositionOp(nodeId: string): TransactionOp
 function createToggleCollapsedOp(nodeId: string): TransactionOp
-function createLayoutPositionOp(nodeId: string, position: { x: number; y: number }): TransactionOp
 
 // --- Transaction builder (construct full Transaction with baseVersion) ---
 function buildTransaction(doc: MindmapDoc, ops: TransactionOp | TransactionOp[], opts?: { actorId?: string }): Transaction
