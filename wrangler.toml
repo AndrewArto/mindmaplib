@@ -1,8 +1,0 @@
-name = "mindmaplib-demo"
-compatibility_date = "2024-09-23"
-pages_build_output_dir = "demo/dist"
-
-[[d1_databases]]
-binding = "MINDMAP_DB"
-database_name = "mindmap-demo"
-database_id = "38fe5bc4-864e-419e-80e6-cb5684caf663"
