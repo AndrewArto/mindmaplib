@@ -61,7 +61,7 @@ export class MindmapEditor {
   constructor(initialDoc: MindmapDoc, options?: MindmapEditorOptions) {
     this.doc = initialDoc
     this.store = options?.store
-    this.undoLimit = options?.undoLimit ?? DEFAULT_UNDO_LIMIT
+    this.undoLimit = Math.max(0, options?.undoLimit ?? DEFAULT_UNDO_LIMIT)
     this.lastSavedVersion = initialDoc.version
   }
 

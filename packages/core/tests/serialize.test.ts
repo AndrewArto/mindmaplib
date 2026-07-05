@@ -78,6 +78,19 @@ describe('serialize / deserialize', () => {
     }
   })
 
+  it('throws on null node entries (P2 r4)', () => {
+    const doc = createDoc('N')
+    const json = serialize(doc)
+    const wrapper = JSON.parse(json)
+    wrapper.doc.nodes[doc.rootId] = null
+    expect(() => deserialize(JSON.stringify(wrapper))).toThrow(MindmapError)
+    try {
+      deserialize(JSON.stringify(wrapper))
+    } catch (e) {
+      expect((e as MindmapError).code).toBe('MALFORMED_JSON')
+    }
+  })
+
   it('strips unknown fields (forward-compatible)', () => {
     const doc = createDoc('Strip')
     const json = serialize(doc)

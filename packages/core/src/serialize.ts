@@ -25,6 +25,12 @@ export function serialize(doc: MindmapDoc): string {
 
 /** Pick only known MindmapNode fields (strips unknown/forward fields). */
 function pickNode(raw: unknown): MindmapNode {
+  if (typeof raw !== 'object' || raw === null) {
+    throw new MindmapError(
+      'deserialize: node entry is not an object',
+      'MALFORMED_JSON',
+    )
+  }
   const n = raw as Record<string, unknown>
   const position =
     n.position && typeof n.position === 'object'

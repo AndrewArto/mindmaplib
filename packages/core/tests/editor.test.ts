@@ -109,6 +109,15 @@ describe('MindmapEditor undo/redo', () => {
     expect(Object.keys(editor.getDoc().nodes).length).toBe(countBefore)
   })
 
+  it('negative undoLimit is clamped to 0, does not hang (P2 r4)', () => {
+    const editor = new MindmapEditor(createDoc('M'), {
+      undoLimit: -5,
+    })
+    const root = editor.getDoc().rootId
+    editor.addChild(root) // should not infinite-loop
+    expect(editor.canUndo()).toBe(false)
+  })
+
   it('ring buffer caps undo history at undoLimit', () => {
     const editor = new MindmapEditor(createDoc('M'), { undoLimit: 3 })
     const root = editor.getDoc().rootId

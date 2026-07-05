@@ -88,6 +88,12 @@ describe('queries', () => {
     expect(getNode(doc, 'nope')).toBeUndefined()
   })
 
+  it('getNode does not return inherited properties (P2 r4)', () => {
+    const doc = createDoc('P')
+    expect(getNode(doc, 'toString')).toBeUndefined()
+    expect(getNode(doc, 'hasOwnProperty')).toBeUndefined()
+  })
+
   it('getChildren returns nodes ordered per childOrder', () => {
     const { doc, root, a, b } = buildSample()
     const children = getChildren(doc, root)

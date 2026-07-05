@@ -36,10 +36,14 @@ export function createDoc(title: string): MindmapDoc {
     collapsed: false,
     childOrder: [],
   }
+  const nodes: Record<string, MindmapNode> = Object.assign(
+    Object.create(null),
+    { [rootId]: root },
+  )
   return {
     id: docId,
     rootId,
-    nodes: { [rootId]: root },
+    nodes,
     version: 0,
     meta: { title, created: now, updated: now },
   }
@@ -53,7 +57,7 @@ export function getNode(
   doc: MindmapDoc,
   nodeId: string,
 ): MindmapNode | undefined {
-  return doc.nodes[nodeId]
+  return Object.hasOwn(doc.nodes, nodeId) ? doc.nodes[nodeId] : undefined
 }
 
 /** Children of `nodeId`, ordered per its `childOrder`. */
