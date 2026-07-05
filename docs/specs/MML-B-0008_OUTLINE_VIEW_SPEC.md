@@ -59,10 +59,12 @@ excerpts, search/filter, and the two-way sync protocol with the canvas.
 ## Relationship to MML-B-0007
 
 MML-B-0007 defines the outline as a component within the React adapter. This
-spec extends that definition with implementation-level detail. Where the two
-specs conflict, this spec is authoritative for outline-specific behavior.
-MML-B-0007 remains authoritative for the adapter-level integration (props,
-callbacks, viewport).
+spec extends that definition with implementation-level detail and is
+**authoritative** for all outline-specific props and behavior, including:
+`outlineShowToolbar`, `outlineSearchable`, and the full `OutlineViewProps`
+interface. MML-B-0007's `MindmapProps` summary should be treated as a subset;
+where this spec defines additional outline props, they take precedence and
+must be forwarded by the `Mindmap` component.
 
 ## Component Architecture
 
@@ -153,11 +155,17 @@ function buildVisibleList(doc: MindmapDoc): string[] {
 
 4. Each `OutlineItem` is a flat row — no children, no recursion. Wrapped
    in `React.memo` comparing `node` reference, `isSelected`, `isEditing`,
-   `depth`, and `focusedId` (the roving-tabindex focus target). When a branch
-   is moved or focus changes, rows need updated indentation/`aria-level`/
-   `tabindex` even though the `node` object is unchanged (structural sharing).
-   Without `depth` and `focusedId` in the comparator, those rows would be
-   stale. Structural sharing ensures only changed nodes get new references.
+   `depth`, and `isFocused` (boolean: is this row the roving-tabindex target?).
+   When a branch is moved, rows need updated indentation/`aria-level` even
+   though the `node` object is unchanged (structural sharing). Without `depth`
+   in the comparator, those rows would be stale.
+
+   Performance note: pass `isFocused` as a per-row boolean (not a global
+   `focusedId` string). Comparing a global `focusedId` means every row sees a
+   prop change on arrow navigation, invalidating all 500 rows. A boolean
+   `isFocused` only changes for the old and new focused rows — the rest keep
+   `isFocused: false` and skip re-render. Structural sharing ensures only
+   changed nodes get new references.
 
 5. Indentation is via `depth` prop, `padding-left` (not DOM nesting).
 
@@ -367,11 +375,15 @@ function getDropZone(
   rowElement: HTMLElement,
   targetId: string,
   doc: MindmapDoc,
+  draggedId: string,
 ): 'before' | 'after' | 'inside' | null {
   // Root has no siblings — 'before' and 'after' are disabled.
+  // Descendant targets are invalid — prevents cycles.
   // Returns null to indicate "no valid drop zone" (drop rejected).
   const target = getNode(doc, targetId)!
   const isRoot = target.parentId === null
+  // Reject drops onto own descendants (prevents cycles).
+  if (isDescendant(doc, targetId, draggedId)) return null
 
   const rect = rowElement.getBoundingClientRect()
   const y = e.clientY - rect.top
@@ -383,11 +395,11 @@ function getDropZone(
 }
 ```
 
-- `onDragOver`: compute drop zone via `getDropZone`. If zone is `null`
-  (rejected, e.g. root before/after), do NOT call `preventDefault()` — the
-  browser will show a "no-drop" cursor and the drop will not fire. If zone is
-  valid, show visual indicator (CSS class: `mml-outline-drop--before`,
-  `--after`, `--inside`) and call `e.preventDefault()`.
+- `onDragOver`: compute drop zone via `getDropZone(e, rowEl, targetId, doc,
+draggedId)`. Returns `null` if rejected (root before/after, or target is a
+  descendant of dragged). If `null`, do NOT call `preventDefault()` — browser
+  shows "no-drop" cursor, drop will not fire. If valid, show visual indicator
+  and call `e.preventDefault()`.
 - `onDragLeave`: clear drop indicator.
 
 ### Drop Action
@@ -401,8 +413,7 @@ function handleDrop(
   zone: 'before' | 'after' | 'inside',
 ) {
   if (draggedId === targetId) return // no-op
-  if (isDescendant(doc, targetId, draggedId)) return // reject: cycle
-  if (zone === null) return // rejected by getDropZone (e.g. root before/after)
+  if (zone === null) return // rejected by getDropZone (root sibling or descendant)
 
   if (zone === 'inside') {
     editor.moveNode(draggedId, targetId, null) // first child
