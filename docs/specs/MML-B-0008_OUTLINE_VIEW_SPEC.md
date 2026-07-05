@@ -311,38 +311,35 @@ hidden rows or skipping rendered matches.
 
 ### Navigation Algorithm
 
+Navigation operates on the **visible items list** — the same flat list used for
+rendering (`buildVisibleList` during normal mode, filtered list during search).
+This ensures arrow keys never focus hidden nodes or skip rendered matches.
+
 ```typescript
-function getNextVisibleItem(doc: MindmapDoc, currentId: string): string | null {
-  // 1. If current is expanded and has children: first child.
-  const node = getNode(doc, currentId)!
-  if (!node.collapsed && node.childOrder.length > 0) {
-    return node.childOrder[0]
-  }
-  // 2. If has next sibling: next sibling.
-  const nextSibling = getNextSibling(doc, currentId)
-  if (nextSibling) return nextSibling
-  // 3. Walk up: find nearest ancestor with a next sibling.
-  let parentId = node.parentId
-  while (parentId !== null) {
-    const uncle = getNextSibling(doc, parentId)
-    if (uncle) return uncle
-    parentId = getNode(doc, parentId)!.parentId
-  }
-  return null // no next item (current is last in tree)
+function navigateVisible(
+  visibleIds: string[],
+  currentId: string,
+  direction: 'next' | 'prev',
+): string | null {
+  const idx = visibleIds.indexOf(currentId)
+  if (idx === -1) return visibleIds[0] ?? null
+  const nextIdx = direction === 'next' ? idx + 1 : idx - 1
+  if (nextIdx < 0 || nextIdx >= visibleIds.length) return null
+  return visibleIds[nextIdx]
 }
 
-function getPrevVisibleItem(doc: MindmapDoc, currentId: string): string | null {
-  // 1. If has prev sibling:
-  const prevSibling = getPrevSibling(doc, currentId)
-  if (prevSibling) {
-    // Find last visible descendant of prev sibling.
-    return getLastVisibleDescendant(doc, prevSibling)
-  }
-  // 2. Otherwise: parent.
-  const node = getNode(doc, currentId)!
-  return node.parentId
-}
+// Usage in keyboard handler:
+const visibleIds = searchActive
+  ? buildFilteredList(doc, query)
+  : buildVisibleList(doc)
+const next = navigateVisible(visibleIds, focusedId, 'next')
 ```
+
+During normal mode, `visibleIds` is the depth-first traversal respecting
+`collapsed` flags. During search, `visibleIds` is the filtered list (matching
+nodes + their ancestors). In both cases, navigation is a simple index
+increment/decrement on the flat list — no tree walking, no edge cases with
+collapsed ancestors.
 
 ## Drag-and-Drop Reparenting
 
@@ -567,8 +564,28 @@ Implements MML-B-0004 for the outline view.
 ### ARIA Attributes
 
 - `aria-level`: depth of the node in the tree (root = 1, children = 2, etc.).
-- `aria-expanded`: `true` if expanded and has children, `false` if collapsed
-  and has children. Omitted if leaf (no children).
+- `aria-expanded`: reflects the **effective** expansion state. During normal
+  mode: `true` if `!node.collapsed && hasChildren`, `false` if
+  `node.collapsed && hasChildren`. During active search: a collapsed node
+  whose children are shown (because they match the query) reports
+  `aria-expanded="true"` — the effective state, not the stored flag. Omitted
+  if leaf (no children).
+
+```typescript
+function getEffectiveExpanded(
+  node: MindmapNode,
+  searchActive: boolean,
+  filteredVisibleIds: Set<string>,
+): boolean | undefined {
+  if (node.childOrder.length === 0) return undefined // leaf
+  if (searchActive) {
+    // During search, expanded = children are visible in filtered list.
+    return node.childOrder.some((childId) => filteredVisibleIds.has(childId))
+  }
+  return !node.collapsed
+}
+```
+
 - `aria-selected`: `true` if `node.id === selectedId`, `false` otherwise.
 
 ### Roving Tabindex
@@ -631,15 +648,31 @@ The `--mml-level` CSS variable is set via inline style to
 
 ## Component Props
 
+These props are received from the parent `Mindmap` component. To expose them
+through the public API, `MindmapProps` (MML-B-0007) MUST be extended with:
+
+```typescript
+// Additions to MindmapProps (MML-B-0007):
+interface MindmapProps {
+  // ... existing props ...
+
+  // Outline configuration
+  outlineShowToolbar?: boolean // default: false
+  outlineSearchable?: boolean // default: false
+}
+```
+
+The `Mindmap` component forwards these to `OutlineView`:
+
 ```typescript
 interface OutlineViewProps {
   editor: MindmapEditor
   selectedId: string | null
-  showToolbar?: boolean // default: false
-  searchable?: boolean // default: false
-  selectToCenter?: boolean // default: false
-  confirmDelete?: (node: MindmapNode) => Promise<boolean> | boolean // from MindmapProps
-  onNodeDoubleClick?: (nodeId: string, event: React.MouseEvent) => void // from MindmapProps
+  showToolbar?: boolean // from MindmapProps.outlineShowToolbar, default: false
+  searchable?: boolean // from MindmapProps.outlineSearchable, default: false
+  selectToCenter?: boolean // from MindmapProps.selectToCenter, default: false
+  confirmDelete?: (node: MindmapNode) => Promise<boolean> | boolean
+  onNodeDoubleClick?: (nodeId: string, event: React.MouseEvent) => void
   className?: string
 }
 ```
