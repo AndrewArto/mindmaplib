@@ -265,7 +265,7 @@ function handleToggle(
   if (ephemeralExpand.has(nodeId)) {
     // Persist the ephemeral expansion, then clear it from the set
     // so the next toggle collapses the branch normally.
-    if (node.collapsed) editor.apply(createToggleCollapsedOp(nodeId))
+    if (node.collapsed) editor.toggleCollapsed(nodeId)
     setEphemeralExpand((prev) => {
       const next = new Set(prev)
       next.delete(nodeId)
@@ -273,7 +273,7 @@ function handleToggle(
     })
   } else {
     // Normal toggle: flip the persisted collapsed flag.
-    editor.apply(createToggleCollapsedOp(nodeId))
+    editor.toggleCollapsed(nodeId)
   }
 }
 ```
@@ -404,7 +404,7 @@ function navigateVisible(
 // Usage in keyboard handler:
 const visibleIds = searchActive
   ? buildFilteredList(doc, query)
-  : buildVisibleList(doc)
+  : buildVisibleList(doc, ephemeralExpand)
 const next = navigateVisible(visibleIds, focusedId, 'next')
 ```
 
