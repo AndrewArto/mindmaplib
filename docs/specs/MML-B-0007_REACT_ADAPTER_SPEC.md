@@ -74,6 +74,7 @@ All verified against npm registry on 2026-07-05.
 | -------------- | --------------------------------------------- | -------------- | ------------------ | ----------------------------------------------- |
 | Framework      | react, react-dom                              | ^18.3 \|\| ^19 | MIT                | First integration target is a React app         |
 | Rich text      | @tiptap/core, @tiptap/pm, @tiptap/starter-kit | ^3.0           | MIT                | Headless, framework-agnostic, MIT core          |
+| React binding  | @tiptap/react                                 | ^3.0           | MIT                | EditorContent component for React integration   |
 | Link mark      | @tiptap/extension-link                        | ^3.0           | MIT                | Link not in StarterKit; required for link marks |
 | HTML sanitizer | dompurify                                     | ^3             | MPL-2.0/Apache-2.0 | Sanitize generateHTML output before DOM insert  |
 | Layout math    | d3-hierarchy                                  | ^3.1           | ISC                | Already a core dependency; adapter passes sizes |
@@ -114,7 +115,7 @@ CI-enforced via dependency-cruiser, extending the rules from MML-B-0001:
 - `@mindmaplib/react` MAY import from `@mindmaplib/core`.
 - `@mindmaplib/react` MUST NOT import from `demo/`.
 - `@mindmaplib/react` MAY import `react`, `react-dom`, `@tiptap/*`,
-  `dompurify`, `d3-hierarchy`.
+  `dompurify`, `d3-hierarchy`, `@tiptap/react`.
 - `@mindmaplib/react` MUST NOT import any DOM-specific library not listed above
   without spec amendment.
 - If the adapter needs a core symbol that is not in the public API, the public
@@ -237,8 +238,11 @@ The critical performance constraint: render 500+ nodes without lag.
 
 3. **Memoized node components.** `<NodeView>` is wrapped in `React.memo` with a
    custom comparator that checks `node` reference identity (structural sharing
-   from immutable updates means unchanged nodes keep their reference) and
-   `isEditing` flag. Unchanged nodes skip re-render entirely.
+   from immutable updates means unchanged nodes keep their reference),
+   `isEditing` flag, and `isSelected` flag. Without `isSelected`, selection
+   changes (which only update `selectedNodeId`, not node references) would not
+   trigger re-render, leaving `mml-node--selected` stale. Unchanged nodes skip
+   re-render entirely.
 
 4. **Single transform on the container.** The nodes-layer and SVG layer are
    children of one container that applies the viewport CSS transform. Pan/zoom
@@ -307,10 +311,23 @@ Constants:
 
 ### fitToScreen
 
-`editor.fitToScreen()` (implemented in core) computes a viewport that fits all
-positioned nodes within the container bounds with padding. The adapter passes
-the container's pixel dimensions to the editor. The result viewport is applied
-via `setViewport`.
+The current core `editor.fitToScreen(): void` uses the editor's internally
+stored container dimensions (set at construction or via a separate method).
+To avoid coupling core to a specific container, the adapter computes the
+fit-to-screen viewport itself:
+
+1. Read the container's pixel dimensions (`containerWidth`,
+   `containerHeight`) from the DOM ref.
+2. Query all positioned nodes from `editor.getDoc()` to find bounding box
+   (`minX, minY, maxX, maxY` in document coordinates).
+3. Compute zoom: `min(containerW / (bboxW + padding), containerH / (bboxH +
+padding), MAX_ZOOM)`.
+4. Compute pan to center the bounding box: `x = (containerW - bboxW * zoom) /
+2 - minX * zoom`, similarly for `y`.
+5. Call `editor.setViewport({ x, y, zoom })`.
+
+This keeps core free of DOM dependencies and container knowledge. The adapter
+owns the fit-to-screen calculation because it owns the container ref.
 
 ## Canvas View
 
@@ -426,11 +443,18 @@ Lifecycle:
 4. TipTap editor created with content from `node.content`.
 5. User edits text. TipTap handles all keyboard input.
 6. User presses Escape or clicks away.
-7. `editor.stopEditing()` fires.
-8. Adapter reads TipTap JSON, converts to `NodeContent`, calls
-   `editor.updateContent()`.
+7. Adapter reads TipTap JSON, converts to `NodeContent`, calls
+   `editor.updateContent(nodeId, content)`.
+8. `editor.stopEditing()` fires, clearing `editingNodeId`.
 9. `NodeView` unmounts TipTap, mounts static HTML with updated content.
-10. `editingNodeId` clears. Keyboard navigation resumes.
+10. Keyboard navigation resumes.
+
+IMPORTANT: content is read and persisted BEFORE `stopEditing()` clears
+`editingNodeId`. If `stopEditing()` ran first, React would unmount the TipTap
+editor before the adapter could read its JSON state, losing the user's edits.
+The adapter must capture `tiptapEditor.getJSON()` and call
+`editor.updateContent()` in the same synchronous handler, before the state
+change that unmounts TipTap propagates through React.
 
 ### Sanitization
 
@@ -458,8 +482,36 @@ const SANITIZE_CONFIG: DOMPurify.Config = {
 }
 
 function sanitizeMindmapHtml(html: string): string {
-  return DOMPurify.sanitize(html, SANITIZE_CONFIG)
+  const cleaned = DOMPurify.sanitize(html, SANITIZE_CONFIG)
+  return enforceLinkRules(cleaned)
 }
+
+// DOMPurify ALLOWED_TAGS/ATTR alone does not enforce link-specific rules
+// (target restriction, rel enforcement, scheme allowlist). This post-pass
+// handles them using a DOMPurify hook or a manual DOM walk:
+function enforceLinkRules(html: string): string {
+  // Use DOMPurify's afterSanitizeAttributes hook to process <a> tags:
+  // 1. If href scheme is not http/https/mailto, remove the href attribute.
+  // 2. If target is set and not _blank, remove it (or set to _blank).
+  // 3. If target=_blank, ensure rel="noopener noreferrer".
+  // Implemented via DOMPurify.addHook('afterSanitizeAttributes', cb) at
+  // module initialization, not per-call.
+  return html
+}
+
+// Hook registration (run once at module load):
+// DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+//   if (node.tagName === 'A') {
+//     const href = node.getAttribute('href') || ''
+//     if (!/^(https?:|mailto:)/i.test(href)) node.removeAttribute('href')
+//     if (node.getAttribute('target') && node.getAttribute('target') !== '_blank') {
+//       node.setAttribute('target', '_blank')
+//     }
+//     if (node.getAttribute('target') === '_blank') {
+//       node.setAttribute('rel', 'noopener noreferrer')
+//     }
+//   }
+// })
 ```
 
 The sanitizer also enforces:
@@ -914,6 +966,7 @@ packages/react/
     "@tiptap/core": "^3.0",
     "@tiptap/extension-link": "^3.0",
     "@tiptap/pm": "^3.0",
+    "@tiptap/react": "^3.0",
     "@tiptap/starter-kit": "^3.0",
     "dompurify": "^3",
     "d3-hierarchy": "^3.1"
