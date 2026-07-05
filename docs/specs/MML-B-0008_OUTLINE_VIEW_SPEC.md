@@ -146,7 +146,7 @@ function buildVisibleList(doc: MindmapDoc): string[] {
         depth={depth}
         isSelected={id === state.selectedNodeId}
         isEditing={id === state.editingNodeId}
-        isFocused={id === state.focusedNodeId}
+        isFocused={id === focusedItemId}
         posInSet={getPosInSet(state.doc, id)}
         setSize={getSetSize(state.doc, id)}
         editor={editor}
@@ -502,8 +502,9 @@ because an ancestor is collapsed, the outline auto-expends the ancestors:
 (replaced by editor-based version above)
 
 This is called by the adapter when `selectedNodeId` changes and the selected
-node is not visible in the outline. The auto-expand MUST go through the editor
-as a single undoable transaction, not by replacing the doc directly:
+node is not visible in the outline. The auto-expand MUST be ephemeral
+(non-undoable) — it is a view-level convenience, not a user-initiated change.
+Applying it as an undoable transaction would create an undo loop (see below).
 
 ```typescript
 function ensureVisible(editor: MindmapEditor, nodeId: string): void {
@@ -518,23 +519,16 @@ function ensureVisible(editor: MindmapEditor, nodeId: string): void {
     parentId = parent.parentId
   }
   if (ops.length > 0) {
-    editor.apply(buildTransaction(doc, ops))
+    editor.apply(buildTransaction(doc, ops), { skipUndo: true })
   }
 }
 ```
 
-The auto-reveal MUST be ephemeral (non-undoable) — it is a view-level
-convenience, not a user-initiated document change. If it were undoable,
-pressing Undo after a selection would restore collapsed ancestors while
-`selectedNodeId` still points at the hidden node, triggering `ensureVisible`
-again and re-pushing the expand onto history. This creates an un-undoable
-cycle and pollutes document history.
-
-Implementation: the adapter needs a core API to apply a transaction without
-pushing to the undo stack (e.g., `editor.apply(tx, { skipUndo: true })`), or
-the reveal is implemented as a view-only state (tracking "ephemerally
-expanded" nodes outside the document model). The preferred approach is a
-`skipUndo` option on `editor.apply`, to be added to core per this spec.
+If it were undoable, pressing Undo after a selection would restore collapsed
+ancestors while `selectedNodeId` still points at the hidden node, triggering
+`ensureVisible` again and re-pushing the expand onto history — an un-undoable
+cycle. Implementation: `editor.apply(tx, { skipUndo: true })` must be added to
+core. Alternative: view-only "ephemerally expanded" tracking outside the doc.
 
 ### Scroll to Selected
 
