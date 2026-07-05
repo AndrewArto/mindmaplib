@@ -4,7 +4,7 @@ Status: draft.
 Date: 2026-07-05.
 Owner: Andrew Arto.
 Spec-ID: MML-B-0001.
-Spec-Version: 0.3.1+backlog.0001.
+Spec-Version: 0.4.0+backlog.0001.
 Backlog lane: backlog.
 Depends-on: none.
 Supersedes: none.
@@ -29,6 +29,8 @@ portal (tripleadigital.io/portal).
 - Two synchronized views on the same document: canvas (spatial) and outline
   (hierarchical).
 - Rich text inside nodes via TipTap v3 (MIT core).
+- Positioned as an embeddable rich-text mindmap and outline editor for
+  SaaS products, not a generic graph toolkit.
 - Full keyboard navigation (Tab, Enter, arrows, shortcuts).
 - Free-float layout with optional auto-layout modes (tree horizontal, tree
   vertical, radial).
@@ -62,13 +64,14 @@ track latest stable within each major.
 | Language | TypeScript | 5.x+ (strict) | Apache-2.0 | Type safety, IDE support |
 | Rich text | @tiptap/core, @tiptap/pm, @tiptap/starter-kit | ^3.0 | MIT | Headless, framework-agnostic, MIT core |
 | Layout math | d3-hierarchy | ^3.1 | ISC | Pure layout algorithms, no DOM, MIT-compatible |
-| Framework adapter | React | ^19 | MIT | First integration target is a React app |
+| Framework adapter | React | ^18.3 \|\| ^19 | MIT | First integration target is a React app |
 | Monorepo | pnpm workspaces | ^9 | MIT | Strict dependency boundaries, fast |
 | Versioning | @changesets/cli | ^2 | MIT | OSS monorepo standard, npm publish automation |
 | Boundaries | dependency-cruiser | ^18 | MIT | CI-enforced package isolation |
 | Testing | vitest | ^2 | MIT | Fast, ESM-native, monorepo-friendly |
 | Library bundling | tsup | ^8 | MIT | Zero-config TS library builds |
 | Demo bundling | vite | ^6 | MIT | Fast dev server, standard for React demos |
+| HTML sanitizer | DOMPurify | ^3 | MPL-2.0/Apache-2.0 | Sanitize generateHTML output in react adapter |
 
 ### License Verification Notes
 
@@ -81,6 +84,13 @@ track latest stable within each major.
   to MIT (permissive, no copyleft). Compatible with an MIT project.
 - dependency-cruiser and changesets are devDependencies (not shipped to
   consumers), but both are MIT regardless.
+- DOMPurify is MPL-2.0/Apache-2.0 dual-licensed. It is a runtime dependency
+  of `@mindmaplib/react` (the sanitizer), NOT of `@mindmaplib/core`. Core
+  remains free of DOM dependencies. MPL-2.0 is GPL-compatible and permits
+  commercial use; the Apache-2.0 option is permissive.
+- React is declared as `peerDependencies: ">=18.3 || >=19"` in
+  `@mindmaplib/react`. The library supports React 18.3+ and 19.x. The demo
+  and dev environment use React 19.
 
 ## Document Model
 
@@ -204,12 +214,34 @@ orderedList, codeBlock. Allowed mark types: bold, italic, code, link. This
 is the default extension set; the React adapter may allow host configuration
 of the extension list.
 
-Security: content stored in documents is treated as semi-trusted. The React
-adapter MUST sanitize generated HTML before DOM insertion (strip script tags,
-event handlers, javascript: URLs). The `generateHTML()` output from TipTap
-with the default extension set does not produce script tags, but defensive
-sanitization is required because document content originates from user input
-and may come from untrusted storage.
+### Node Content Limits
+
+- Maximum list nesting depth: 4 levels of `bulletList`/`orderedList`.
+- Maximum text length per node: 10,000 characters (normalized).
+- Allowed `attrs` per node type:
+  - `heading`: `{ level: 1 | 2 | 3 }` only.
+  - `codeBlock`: `{ language?: string }` only.
+  - `link` mark: `{ href: string; target?: '_blank' }` only. `href` must use
+    `http:`, `https:`, or `mailto:` scheme.
+  - Other node/mark types: no arbitrary attrs.
+- `normalizeContent(content: NodeContent): NodeContent` strips disallowed
+  attrs, truncates text, and removes unknown node types. Called by
+  `updateContent` transactions and `deserialize`.
+
+### HTML Sanitization (React Adapter)
+
+Content stored in documents is treated as semi-trusted. The React adapter
+MUST sanitize generated HTML before DOM insertion using DOMPurify with an
+allowlist:
+
+- Allowed tags: `p, h1, h2, h3, ul, ol, li, pre, code, strong, em, a, br`.
+- `a` tag: `href` attribute only, scheme restricted to `http:`, `https:`,
+  `mailto:`. `target="_blank"` allowed. `rel="noopener noreferrer"` enforced.
+- All other attributes stripped. `style`, `class`, `id`, event handlers
+  (`onerror`, `onclick`, etc.), `javascript:` URLs, and `data:` URLs are
+  forbidden.
+- `generateHTML()` output is always passed through DOMPurify before DOM
+  insertion. No raw HTML bypass is exposed.
 
 ### Empty Node
 
@@ -225,41 +257,90 @@ A newly created node has this content:
 object (structural sharing: unchanged node references are preserved). Views
 (canvas, outline) subscribe to document state and re-render on change.
 
+### Document Invariants
+
+The following invariants MUST hold for any valid `MindmapDoc`. They are
+checked by `validateDoc(doc)` which runs:
+
+- Always inside `deserialize` (rejects malformed input).
+- In dev/test builds after every operation (assertion).
+- Not in production hot paths (use dev-mode only).
+
+```typescript
+function validateDoc(doc: MindmapDoc): void  // throws MindmapError on violation
+```
+
+Invariants:
+
+1. `rootId` exists in `nodes`.
+2. `nodes[rootId].parentId` is `null`.
+3. Only the root has `parentId === null`. All other nodes have a non-null
+   `parentId` pointing to an existing node.
+4. No cycles: following `parentId` from any node reaches root.
+5. No orphan nodes: every node is reachable from root.
+6. `childOrder` on each node contains exactly the IDs of its children
+   (those whose `parentId === this.id`), with no duplicates and no foreign IDs.
+7. No duplicate node IDs.
+8. If `manualPosition === true`, then `position` MUST be non-null.
+9. `position` (when non-null) must contain finite numbers.
+10. `content` matches the `NodeContent` schema (see Node Content Limits).
+11. `schemaVersion` is present on the `SerializedDoc` wrapper, not on `MindmapDoc`.
+
 ## Transactions
 
-All mutations flow through serializable transaction objects. A transaction is
-a plain data object describing an operation, plus an apply function. This
-design enables undo/redo, and in the future, transmission over network.
+All mutations are described by serializable `TransactionOp` values (plain JSON
+discriminated unions). A pure function `applyOp(doc, op)` produces a new doc.
+This separation keeps operations transmissible (network, storage, audit) while
+keeping a single source of truth for behavior.
 
 ```typescript
-// Serializable operation description
-interface TransactionOp {
-  type: 'addNode' | 'deleteNode' | 'moveNode' | 'updateContent' | 'setPosition' | 'toggleCollapsed'
-  nodeId: string
-  parentId?: string         // for addNode, moveNode
-  newParentId?: string      // for moveNode
-  content?: NodeContent     // for updateContent
-  position?: { x: number; y: number }  // for setPosition
-  insertAfter?: string | null  // sibling ID to insert after, for addNode/moveNode
-}
+// Serializable operation: plain JSON, no functions
+type TransactionOp =
+  | { type: 'addNode'; parentId: string; nodeId: string; insertAfter?: string | null; content?: NodeContent }
+  | { type: 'deleteNode'; nodeId: string }
+  | { type: 'moveNode'; nodeId: string; newParentId: string; insertAfter?: string | null }
+  | { type: 'updateContent'; nodeId: string; content: NodeContent }
+  | { type: 'setPosition'; nodeId: string; position: { x: number; y: number } }
+  | { type: 'resetManualPosition'; nodeId: string }
+  | { type: 'toggleCollapsed'; nodeId: string }
 
-// Transaction = operation + apply function
+// Pure function: applies an op to a doc, returns a new doc
+function applyOp(doc: MindmapDoc, op: TransactionOp): MindmapDoc
+
+// A transaction bundles one or more ops applied atomically.
+// baseVersion enables optimistic concurrency; the editor may reject
+// transactions whose baseVersion does not match the current doc.version.
 interface Transaction {
-  op: TransactionOp                    // serializable description
-  apply(doc: MindmapDoc): MindmapDoc   // pure function, returns new doc
+  id: string                  // unique transaction ID (uuid or monotonic)
+  baseVersion: number         // doc.version this transaction was built against
+  ops: TransactionOp[]        // one or more ops applied in order
+  timestamp: string           // ISO 8601
+  actorId?: string            // reserved for future collaboration
 }
+
+function applyTransaction(doc: MindmapDoc, tx: Transaction): MindmapDoc
+// Applies each op in order. If baseVersion !== doc.version and strict
+// mode is on, throws VersionConflictError. Increments doc.version by 1
+// per transaction (not per op).
 ```
 
-Built-in transaction factories:
+Built-in transaction helpers (construct `TransactionOp` values):
 
 ```typescript
-function createAddNodeTx(parentId: string, insertAfter?: string | null, content?: NodeContent): Transaction
-function createDeleteNodeTx(nodeId: string): Transaction
-function createMoveNodeTx(nodeId: string, newParentId: string, insertAfter?: string | null): Transaction
-function createUpdateContentTx(nodeId: string, content: NodeContent): Transaction
-function createSetPositionTx(nodeId: string, position: { x: number; y: number }): Transaction
-function createToggleCollapsedTx(nodeId: string): Transaction
+function createAddNodeOp(parentId: string, nodeId: string, opts?: { insertAfter?: string | null; content?: NodeContent }): TransactionOp
+function createDeleteNodeOp(nodeId: string): TransactionOp
+function createMoveNodeOp(nodeId: string, newParentId: string, insertAfter?: string | null): TransactionOp
+function createUpdateContentOp(nodeId: string, content: NodeContent): TransactionOp
+function createSetPositionOp(nodeId: string, position: { x: number; y: number }): TransactionOp
+function createResetManualPositionOp(nodeId: string): TransactionOp
+function createToggleCollapsedOp(nodeId: string): TransactionOp
 ```
+
+The undo stack stores prior `MindmapDoc` snapshots (not inverse transactions).
+Ring buffer, default 100 entries. Applying a transaction: push current doc
+onto undo stack, clear redo stack, set new doc. Undo/redo are themselves
+counted as new document revisions: each undo/redo increments `doc.version`,
+so host sync (save with `expectedVersion`) works predictably.
 
 Pure tree operations (convenience, internally create and apply transactions):
 
@@ -342,9 +423,25 @@ function getAncestors(doc: MindmapDoc, nodeId: string): MindmapNode[]
 
 // --- Layout ---
 type LayoutMode = 'free-float' | 'tree-horizontal' | 'tree-vertical' | 'radial'
-function computeLayout(doc: MindmapDoc, mode: LayoutMode): MindmapDoc
+
+interface NodeMeasure { width: number; height: number }
+type NodeMeasures = Record<string, NodeMeasure>  // nodeId -> measured size
+
+interface LayoutOptions {
+  nodeMeasures?: NodeMeasures           // measured DOM sizes per node
+  defaultNodeSize?: NodeMeasure         // fallback when measure absent (default: 120x40)
+  spacingX?: number                     // horizontal gap (default: 40)
+  spacingY?: number                     // vertical gap (default: 20)
+}
+
+function computeLayout(doc: MindmapDoc, mode: LayoutMode, options?: LayoutOptions): MindmapDoc
+// Builds a transient d3-hierarchy tree using node measures (or defaults).
 // Overwrites position for nodes where manualPosition === false.
 // Preserves position for nodes where manualPosition === true.
+// Children of a manual-positioned node are laid out relative to that node
+// (manual node acts as a fixed anchor for its auto-positioned subtree).
+// Collapsed nodes are treated as leaves: their descendants are not
+// positioned (their positions are preserved but not recomputed).
 
 // --- Serialization ---
 function serialize(doc: MindmapDoc): string  // JSON string with schemaVersion
@@ -376,6 +473,7 @@ class MindmapEditor {
   promoteNode(nodeId: string): void  // move to parent's sibling level
   updateContent(nodeId: string, content: NodeContent): void
   setPosition(nodeId: string, position: { x: number; y: number }): void
+  resetManualPosition(nodeId: string): void  // return node to auto-layout
   toggleCollapsed(nodeId: string): void
 
   // Selection and editing
@@ -410,15 +508,31 @@ class MindmapEditor {
 // --- Store interface (host-implemented) ---
 interface MindmapStore {
   load(docId: string): Promise<MindmapDoc | null>
-  save(doc: MindmapDoc): Promise<void>
+  save(doc: MindmapDoc, options?: { expectedVersion?: number }): Promise<SaveResult>
   list(): Promise<MindmapDocMeta[]>
   delete(docId: string): Promise<void>
+}
+
+interface SaveResult {
+  saved: boolean
+  conflict: boolean        // true if expectedVersion mismatch
+  currentVersion?: number  // server-side version after save (if saved)
 }
 
 interface MindmapDocMeta {
   id: string
   title: string
   updated: string
+  version: number
+}
+
+// Typed store errors
+class StoreError extends Error {
+  constructor(
+    message: string,
+    readonly code: 'NOT_FOUND' | 'VERSION_CONFLICT' | 'PERMISSION_DENIED' |
+                   'QUOTA_EXCEEDED' | 'CORRUPT_DOCUMENT',
+  )
 }
 
 // In-memory default implementation for dev/testing
@@ -578,6 +692,20 @@ handled by TipTap. The mindmap keyboard handler is suspended during editing.
 Escape exits edit mode first, then deselects on second press.
 
 ## Layout
+
+### Collapsed Semantics
+
+When a node is collapsed (`collapsed === true`):
+
+- Canvas: the node's descendants are not rendered (data is preserved).
+- Outline: the node's children are not shown (expandable indicator shown).
+- Layout: the collapsed node is treated as a leaf. Its descendants' positions
+  are preserved in the document but not recomputed by `computeLayout`. When
+  the node is expanded again, descendants reappear at their stored positions
+  (or get re-laid-out if auto-positioned).
+- Keyboard: arrow navigation skips hidden descendants. ArrowRight on a
+  collapsed node expands it first (or navigates to first child, depending on
+  adapter configuration).
 
 ### Free-Float (default)
 
@@ -813,3 +941,11 @@ updates over WebSocket. The core engine should not need rewriting.
   source of truth in SerializedDoc wrapper).
 - 0.3.1+backlog.0001: Codex review round 2 confirmation — ListItemBlock content
   made recursive (Array<TextBlock | ListBlock>) to support nested sub-lists.
+- 0.4.0+backlog.0001: Stevens architecture review — TransactionOp as
+  serializable discriminated union (apply removed from Transaction), document
+  invariants + validateDoc, computeLayout with nodeMeasures, DOMPurify
+  sanitizer contract, Store API with expectedVersion + typed errors,
+  position/manualPosition invariant + resetManualPosition, NodeContent limits
+  (max depth, text length, allowed attrs), collapsed layout semantics,
+  React peerDep >=18.3 || >=19, product positioning (rich-text mindmap +
+  outline editor for SaaS).
