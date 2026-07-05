@@ -4,7 +4,7 @@ Status: draft.
 Date: 2026-07-05.
 Owner: Andrew Arto.
 Spec-ID: MML-B-0001.
-Spec-Version: 0.4.0+backlog.0001.
+Spec-Version: 0.4.1+backlog.0001.
 Backlog lane: backlog.
 Depends-on: none.
 Supersedes: none.
@@ -324,7 +324,7 @@ function applyTransaction(doc: MindmapDoc, tx: Transaction): MindmapDoc
 // per transaction (not per op).
 ```
 
-Built-in transaction helpers (construct `TransactionOp` values):
+Built-in operation factories (construct `TransactionOp` values):
 
 ```typescript
 function createAddNodeOp(parentId: string, nodeId: string, opts?: { insertAfter?: string | null; content?: NodeContent }): TransactionOp
@@ -334,6 +334,36 @@ function createUpdateContentOp(nodeId: string, content: NodeContent): Transactio
 function createSetPositionOp(nodeId: string, position: { x: number; y: number }): TransactionOp
 function createResetManualPositionOp(nodeId: string): TransactionOp
 function createToggleCollapsedOp(nodeId: string): TransactionOp
+```
+
+Built-in transaction builders (construct full `Transaction` objects):
+
+```typescript
+function buildTransaction(doc: MindmapDoc, ops: TransactionOp | TransactionOp[], opts?: { actorId?: string }): Transaction
+// Creates a Transaction with:
+//   id: generated uuid
+//   baseVersion: doc.version (captured at build time)
+//   ops: flattened array
+//   timestamp: current ISO 8601
+//   actorId: from opts or undefined
+```
+
+Version conflict detection:
+
+```typescript
+class VersionConflictError extends Error {
+  constructor(
+    readonly expected: number,
+    readonly actual: number,
+    readonly transactionId: string,
+  )
+}
+
+// MindmapEditor.apply accepts an optional strict flag:
+// editor.apply(tx, { strict: true })  // default: false in PoC
+// When strict is true and tx.baseVersion !== doc.version, throws VersionConflictError.
+// When strict is false (default), the transaction is applied regardless of baseVersion.
+// Strict mode is intended for collaboration and multi-tab sync scenarios.
 ```
 
 The undo stack stores prior `MindmapDoc` snapshots (not inverse transactions).
@@ -412,6 +442,7 @@ function deleteNode(doc: MindmapDoc, nodeId: string): MindmapDoc
 function moveNode(doc: MindmapDoc, nodeId: string, newParentId: string, insertAfter?: string | null): MindmapDoc
 function updateNodeContent(doc: MindmapDoc, nodeId: string, content: NodeContent): MindmapDoc
 function setNodePosition(doc: MindmapDoc, nodeId: string, position: { x: number; y: number }): MindmapDoc
+function resetManualPosition(doc: MindmapDoc, nodeId: string): MindmapDoc
 function toggleNodeCollapsed(doc: MindmapDoc, nodeId: string): MindmapDoc
 
 // --- Queries (pure, read-only) ---
@@ -435,6 +466,16 @@ interface LayoutOptions {
 }
 
 function computeLayout(doc: MindmapDoc, mode: LayoutMode, options?: LayoutOptions): MindmapDoc
+// Pure function: returns a new doc with recomputed positions.
+// Does NOT mutate the input doc. The caller (MindmapEditor) wraps the
+// result into a transaction internally:
+//   1. Call computeLayout(oldDoc, mode, opts) -> newDoc
+//   2. Extract position changes as setPosition/resetManualPosition ops
+//      for each affected node (manualPosition === false nodes only)
+//   3. Build a Transaction with those ops
+//   4. Apply via applyTransaction -> new doc with incremented version
+// This ensures layout changes go through the transaction layer and
+// increment doc.version for host sync.
 // Builds a transient d3-hierarchy tree using node measures (or defaults).
 // Overwrites position for nodes where manualPosition === false.
 // Preserves position for nodes where manualPosition === true.
@@ -465,7 +506,7 @@ class MindmapEditor {
   getState(): EditorState
 
   // Mutations
-  apply(tx: Transaction): void
+  apply(tx: Transaction, opts?: { strict?: boolean }): void  // strict: throw on baseVersion mismatch
   addChild(parentId: string, opts?: { insertAfter?: string | null; content?: NodeContent }): string  // returns new node ID
   addSibling(siblingId: string, content?: NodeContent): string  // returns new node ID
   deleteNode(nodeId: string): void
@@ -486,7 +527,7 @@ class MindmapEditor {
   fitToScreen(): void  // computes viewport to fit all nodes
 
   // Layout
-  setLayout(mode: LayoutMode): void
+  setLayout(mode: LayoutMode): void  // runs computeLayout, wraps result in transaction
 
   // Undo/redo
   undo(): void
@@ -949,3 +990,6 @@ updates over WebSocket. The core engine should not need rewriting.
   (max depth, text length, allowed attrs), collapsed layout semantics,
   React peerDep >=18.3 || >=19, product positioning (rich-text mindmap +
   outline editor for SaaS).
+- 0.4.1+backlog.0001: Codex review v0.4.0 — added buildTransaction factory,
+  VersionConflictError + strict mode, resetManualPosition in all op lists,
+  computeLayout transaction-wrapping semantics.
