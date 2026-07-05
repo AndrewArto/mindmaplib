@@ -199,8 +199,13 @@ function scheduleSave(): void {
     saveIndicator.className = 'save-indicator saving'
     try {
       await editor.save()
-      saveIndicator.textContent = 'Saved'
-      saveIndicator.className = 'save-indicator saved'
+      if (editor.isDirty()) {
+        saveIndicator.textContent = 'Conflict'
+        saveIndicator.className = 'save-indicator'
+      } else {
+        saveIndicator.textContent = 'Saved'
+        saveIndicator.className = 'save-indicator saved'
+      }
     } catch {
       saveIndicator.textContent = 'Error'
       saveIndicator.className = 'save-indicator'
@@ -208,14 +213,20 @@ function scheduleSave(): void {
   }, 2000)
 }
 
+function resetCanvasView(): void {
+  isSessionList = false
+  canvasContainer.innerHTML = ''
+  canvasContainer.appendChild(hints)
+  canvas.attach(canvasContainer)
+}
+
 async function newSession(): Promise<void> {
+  resetCanvasView()
   const doc = createSampleDoc()
   const id = await store.create(doc)
   currentSessionId = id
   setUrlId(id)
-  initEditor(doc)
-  // Set the doc id so save() targets the right row
-  // We need to set it on the doc — create a new editor with the right doc
+  // Use the server-assigned id so future saves target the right row.
   const docWithId = { ...doc, id }
   initEditor(docWithId)
 }

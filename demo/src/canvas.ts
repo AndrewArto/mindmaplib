@@ -54,6 +54,13 @@ export class Canvas {
     this.setupPanZoom()
   }
 
+  /** Re-attach the viewport to a (possibly new) container element. */
+  attach(container: HTMLElement): void {
+    if (this.viewport.parentElement !== container) {
+      container.appendChild(this.viewport)
+    }
+  }
+
   render(state: EditorState): void {
     this.state = state
     this.applyTransform(state.viewport)
