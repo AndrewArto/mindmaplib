@@ -253,6 +253,44 @@ describe('normalizeContent', () => {
     expect((inline as { text: string }).text.length).toBe(MAX_TEXT_LENGTH)
   })
 
+  it('handles null entries in content array (P2 r2)', () => {
+    const input = {
+      type: 'doc' as const,
+      content: [
+        null,
+        {
+          type: 'paragraph' as const,
+          content: [{ type: 'text' as const, text: 'ok' }],
+        },
+        null,
+      ],
+    }
+    const result = normalizeContent(input)
+    expect(result.content).toHaveLength(1)
+    expect(result.content[0]!.type).toBe('paragraph')
+  })
+
+  it('handles null entries in list items (P2 r2)', () => {
+    const input = {
+      type: 'doc' as const,
+      content: [
+        {
+          type: 'bulletList' as const,
+          content: [
+            null,
+            {
+              type: 'listItem',
+              content: [null, { type: 'paragraph' as const, content: [] }],
+            },
+          ],
+        },
+      ],
+    }
+    const result = normalizeContent(input)
+    expect(result.content).toHaveLength(1)
+    expect(result.content[0]!.type).toBe('bulletList')
+  })
+
   it('returns empty paragraph when all blocks are invalid', () => {
     const input = {
       type: 'doc' as const,

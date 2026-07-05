@@ -274,11 +274,12 @@ export class MindmapEditor {
 
   async save(): Promise<void> {
     if (!this.store) return
+    const savingVersion = this.doc.version
     const result = await this.store.save(this.doc, {
       expectedVersion: this.lastSavedVersion,
     })
     if (result.saved) {
-      this.lastSavedVersion = this.doc.version
+      this.lastSavedVersion = savingVersion
     }
   }
 

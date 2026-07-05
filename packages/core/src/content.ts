@@ -166,6 +166,7 @@ function normalizeListBlock(
   const items: NormalizedListItem[] = []
   if (Array.isArray(obj.content)) {
     for (const item of obj.content) {
+      if (typeof item !== 'object' || item === null) continue
       const normalizedItem = normalizeListItem(item, depth, remaining)
       if (normalizedItem) items.push(normalizedItem)
     }
@@ -185,6 +186,7 @@ function normalizeListItem(
 
   const content: Array<TextBlock | ListBlock> = []
   for (const child of obj.content) {
+    if (typeof child !== 'object' || child === null) continue
     const c = child as { type?: unknown }
     if (typeof c.type === 'string' && ALLOWED_TEXT_BLOCK_TYPES.has(c.type)) {
       const tb = normalizeTextBlock(child, remaining)
@@ -214,6 +216,7 @@ export function normalizeContent(input: unknown): NodeContent {
     Array.isArray((input as { content?: unknown }).content)
   ) {
     for (const block of (input as { content: unknown[] }).content) {
+      if (typeof block !== 'object' || block === null) continue
       const b = block as { type?: unknown }
       if (typeof b.type === 'string' && ALLOWED_TEXT_BLOCK_TYPES.has(b.type)) {
         const tb = normalizeTextBlock(block, remaining)

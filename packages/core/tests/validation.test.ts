@@ -70,6 +70,13 @@ describe('validateDoc', () => {
     expect(() => validateDoc(doc)).toThrow(MindmapError)
   })
 
+  it('rejects node.id mismatch with record key (P2 r2)', () => {
+    const doc = clone(createDoc('ID'))
+    const root = doc.nodes[doc.rootId]!
+    doc.nodes[doc.rootId] = { ...root, id: 'wrong-id' }
+    expect(() => validateDoc(doc)).toThrow(MindmapError)
+  })
+
   it('rejects non-finite position', () => {
     const doc = clone(createDoc('NF'))
     const root = doc.nodes[doc.rootId]!

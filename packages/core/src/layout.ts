@@ -65,10 +65,13 @@ export function computeLayoutOps(
       ? defaultNodeSize.width + spacingX
       : defaultNodeSize.height + spacingY
 
-  // Lay out. For radial we use an angular size so d.x ∈ [0, 2π].
+  // Lay out. For radial, size() maps the full tree into the given box,
+  // so total radius = (maxDepth + 1) * depthW gives correct per-level spacing.
+  // For tree modes, nodeSize() gives per-level spacing directly.
+  const maxDepth = h.height ?? 0
   const laid: HierarchyPointNode<MindmapNode> =
     mode === 'radial'
-      ? tree<MindmapNode>().size([2 * Math.PI, depthW])(h)
+      ? tree<MindmapNode>().size([2 * Math.PI, (maxDepth + 1) * depthW])(h)
       : tree<MindmapNode>().nodeSize([siblingW, depthW])(h)
 
   const toPos = (d: HierarchyPointNode<MindmapNode>): Position => {

@@ -70,6 +70,26 @@ describe('computeLayoutOps', () => {
     expect(ids).not.toContain(a1)
   })
 
+  it('radial spaces levels by per-depth distance, not total (P2 r2)', () => {
+    let doc = createDoc('R')
+    const root = doc.rootId
+    doc = addNode(doc, root) // child
+    const child = doc.nodes[root].childOrder[0]!
+    doc = addNode(doc, child) // grandchild
+    const ops = computeLayoutOps(doc, 'radial', { spacingY: 20 })
+    // root at radius 0, child at ~depthW, grandchild at ~2*depthW
+    const childOp = ops.find((o) => 'nodeId' in o && o.nodeId === child)
+    const gcOp = ops.find(
+      (o) => 'nodeId' in o && o.nodeId === doc.nodes[child].childOrder[0],
+    )
+    const childR = childOp
+      ? Math.hypot(childOp.position.x, childOp.position.y)
+      : -1
+    const gcR = gcOp ? Math.hypot(gcOp.position.x, gcOp.position.y) : -1
+    // grandchild radius should be roughly 2x child radius (per-depth spacing)
+    expect(gcR).toBeGreaterThan(childR * 1.5)
+  })
+
   it('produces ops for all three auto-layout modes', () => {
     let doc = createDoc('A')
     doc = addNode(doc, doc.rootId)

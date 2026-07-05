@@ -26,6 +26,17 @@ export function validateDoc(doc: MindmapDoc): void {
     fail('root node parentId must be null', doc.rootId)
   }
 
+  // 2b. node.id must match its record key (data from untrusted JSON may differ).
+  for (const id of ids) {
+    const node = doc.nodes[id]!
+    if (node.id !== id) {
+      fail(
+        `node record key '${id}' does not match its id field '${node.id}'`,
+        id,
+      )
+    }
+  }
+
   // 3, 4, 5. every node reachable from root, no cycles, only root has null
   // parentId.
   for (const id of ids) {

@@ -200,6 +200,21 @@ describe('MindmapEditor store integration', () => {
     expect(editor.isDirty()).toBe(false)
   })
 
+  it('preserves dirty state when mutated during save (P1 r2)', async () => {
+    const store = new InMemoryStore()
+    const editor = new MindmapEditor(createDoc('M'), { store })
+    const root = editor.getDoc().rootId
+    editor.addChild(root) // v1
+    await editor.save()
+    expect(editor.isDirty()).toBe(false)
+    // start a save, mutate before it resolves
+    const savePromise = editor.save()
+    editor.addChild(root) // v3 while save in flight
+    await savePromise
+    // isDirty should be true because the v3 mutation wasn't saved
+    expect(editor.isDirty()).toBe(true)
+  })
+
   it('load replaces the doc and resets history', async () => {
     const store = new InMemoryStore()
     const editor = new MindmapEditor(createDoc('M'), { store })
