@@ -178,7 +178,7 @@ function sanitizeMindmapHtml(html: string): string
 
 // --- Keyboard handler type ---
 interface KeyboardHandlers {
-  onKeyDown: (e: KeyboardEvent) => void
+  onKeyDown: (e: React.KeyboardEvent<HTMLElement>) => void
 }
 ```
 
@@ -289,7 +289,7 @@ new transform string.
 ### Zoom
 
 Mouse wheel zooms toward the cursor position. Cmd/Ctrl+Plus/Minus zooms toward
-center. Cmd/Ctrl+0 calls `editor.fitToScreen()`.
+center. Cmd/Ctrl+0 triggers the adapter's fit-to-screen computation (see fitToScreen section below — the adapter computes the viewport from actual container dimensions, not core's fixed defaults).
 
 Zoom-to-cursor math:
 
@@ -641,13 +641,18 @@ The `useKeyboard` hook returns a `KeyboardHandlers` object. The `onKeyDown`
 handler checks `state.editingNodeId` first:
 
 ```typescript
-function onKeyDown(e: KeyboardEvent) {
+function onKeyDown(e: React.KeyboardEvent<HTMLElement>) {
   const state = editor.getState()
   // Suspended during text editing — TipTap handles keyboard.
   if (state.editingNodeId !== null) {
     // Only intercept Escape (to exit edit mode).
     if (e.key === 'Escape') {
-      editor.stopEditing()
+      // IMPORTANT: persist TipTap content BEFORE clearing editingNodeId.
+      // The handler calls a helper that reads tiptapEditor.getJSON(),
+      // converts to NodeContent, calls editor.updateContent(), then
+      // calls editor.stopEditing(). This prevents losing unsaved edits
+      // when the editor unmounts.
+      exitEditMode()
       e.preventDefault()
     }
     return
@@ -722,13 +727,23 @@ default in MML-B-0001.
 
 ### Layout Trigger
 
-When the user switches layout mode (`editor.setLayout(mode)`), or when content
-changes invalidate measurements, the adapter triggers:
+When the user switches layout mode, or when content changes invalidate
+measurements, the adapter computes and applies the layout itself, because
+core's `editor.setLayout(mode)` does not accept `nodeMeasures`:
 
-1. `computeLayoutOps(doc, mode, { nodeMeasures })` — core computes positions.
-2. `buildTransaction(doc, ops)` — wrap into a transaction.
-3. `editor.apply(tx)` — apply, increment version.
-4. Viewport re-renders with new positions.
+1. Read current measures from the editor's stored NodeMeasures.
+2. `computeLayoutOps(doc, mode, { nodeMeasures })` — core computes positions.
+3. `buildTransaction(doc, ops)` — wrap into a transaction.
+4. `editor.apply(tx)` — apply, increment version.
+5. Update `EditorState.layoutMode` via a lightweight editor method or by
+   including a mode-change in the state.
+
+This requires either (a) a core API extension:
+`editor.setLayout(mode, options?: { nodeMeasures?: NodeMeasures })`, or
+(b) the adapter calls `computeLayoutOps` + `buildTransaction` + `editor.apply`
+directly, then updates layoutMode through a setter. Option (a) is preferred and
+should be added to MML-B-0001 before adapter implementation. The spec assumes
+this core API will be extended.
 
 ## Styling Strategy
 
@@ -872,7 +887,7 @@ interface MindmapProps {
   gridType?: 'dots' | 'lines' | 'none' // default: 'dots'
 
   // Rich text
-  tiptapExtensions?: Extensions // default: StarterKit
+  tiptapExtensions?: Extensions // default: [StarterKit, Link]
   customNodeRenderer?: CustomNodeRenderer
 
   // Interaction
@@ -1101,8 +1116,10 @@ packages/react/
 - NodeContent with `<script>` markup: static HTML has no executable script.
 - Link marks with `javascript:` URLs: stripped by sanitizer.
 - NodeContent with `<img onerror="...">`: event handler stripped.
-- Custom node renderer injecting unsanitized HTML: not possible (adapter wraps
-  output, dangerouslySetInnerHTML not exposed to renderer).
+- Custom node renderer: document host-responsibility boundary. The default
+  renderer output is always sanitized. However, a custom renderer returning
+  arbitrary ReactNode CAN use dangerouslySetInnerHTML on its own output. The
+  adapter cannot prevent this — the host must sanitize any additional HTML.
 
 ### Boundary Tests
 
