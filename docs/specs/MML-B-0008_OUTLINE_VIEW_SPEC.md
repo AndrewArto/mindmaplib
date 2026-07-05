@@ -241,9 +241,42 @@ function isEffectivelyExpanded(
 - Leaf node (no children): no toggle shown.
 
 The toggle icon and `aria-expanded` MUST use `isEffectivelyExpanded`, not
-the raw `collapsed` flag. When a user clicks the toggle on an
-ephemerally-expanded node, the adapter persists the expansion
-(`toggleCollapsed`) to make it explicit, rather than collapsing.
+the raw `collapsed` flag.
+
+When a user clicks the toggle on an ephemerally-expanded node, the
+adapter MUST do two things: persist the expansion via `toggleCollapsed`
+(if `collapsed` is still `true`) AND remove the node from
+`ephemeralExpand`. Removing the node from the ephemeral set is
+essential: without it, `isEffectivelyExpanded` would keep returning
+`true` even after a subsequent collapse toggle, making the branch
+impossible to collapse.
+
+```typescript
+function handleToggle(
+  nodeId: string,
+  editor: MindmapEditor,
+  ephemeralExpand: Set<string>,
+  setEphemeralExpand: (updater: (prev: Set<string>) => Set<string>) => void,
+): void {
+  const doc = editor.getDoc()
+  const node = doc.nodes[nodeId]
+  if (!node || node.childOrder.length === 0) return
+
+  if (ephemeralExpand.has(nodeId)) {
+    // Persist the ephemeral expansion, then clear it from the set
+    // so the next toggle collapses the branch normally.
+    if (node.collapsed) editor.apply(createToggleCollapsedOp(nodeId))
+    setEphemeralExpand((prev) => {
+      const next = new Set(prev)
+      next.delete(nodeId)
+      return next
+    })
+  } else {
+    // Normal toggle: flip the persisted collapsed flag.
+    editor.apply(createToggleCollapsedOp(nodeId))
+  }
+}
+```
 
 ### Collapse All / Expand All
 
