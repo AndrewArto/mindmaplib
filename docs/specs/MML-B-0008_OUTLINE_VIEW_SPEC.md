@@ -68,22 +68,20 @@ callbacks, viewport).
 
 ```
 <OutlineView>                    Single subscriber to MindmapEditor.
-  │                              Holds EditorState, passes doc + selection
-  │                              down to items as props.
+  │                              Holds EditorState, builds flat visible list.
   │
   ├── <OutlineToolbar>           Optional: search input, collapse-all button.
   │   └── <SearchInput>
   │
   └── <OutlineTree>              Scrollable container, role="tree".
-      └── <OutlineItem>          Recursive, one per node. Memoized.
-          ├── <OutlineRow>       Single row: toggle + excerpt + badges.
-          │   ├── <CollapseToggle>
-          │   ├── <TextExcerpt>
-          │   └── <NodeBadges>   Optional: child count, warnings.
-          │
-          └── <div role="group"> Wraps children for ARIA tree ownership.
-              └── <OutlineItem>  Recursive children.
+      └── <OutlineItem>          Flat list of items (NOT recursive).
+          ├── <CollapseToggle>   Shown if node has children.
+          ├── <TextExcerpt>      First text node, plain text.
+          └── <NodeBadges>       Optional: child count, position indicator.
 ```
+
+Note: items are flat siblings, not nested. ARIA hierarchy is communicated
+via `aria-level`, `aria-posinset`, `aria-setsize` attributes.
 
 ### Data Flow
 
@@ -94,36 +92,77 @@ MindmapEditor (core)
     ▼
 OutlineView → useEditor(editor) → EditorState
     │
-    │ Passes doc, selectedId, editingId down as props
+    │ Builds flat visible list, passes node + depth as props
     ▼
-OutlineItem (memoized) — no subscription, pure props
+OutlineItem (memoized, flat) — no subscription, pure props
 ```
 
 The outline subscribes to the editor exactly ONCE at the `OutlineView` level.
-Individual `OutlineItem` components receive `doc`, `selectedId`, and
-`editingId` as props. This is critical for performance: 500 items each
-subscribing independently would create 500 listeners, each firing on every
-state change.
+Individual `OutlineItem` components receive `node`, `depth`, `isSelected`,
+and `isEditing` as props (not `doc`). This is critical for performance: 500
+items each subscribing independently would create 500 listeners, each firing
+on every state change.
 
-### Rendering Strategy
+### Rendering Strategy — Flattened List (Not Recursive)
+
+The outline MUST NOT use recursive component rendering (`OutlineItem`
+rendering child `OutlineItem`s). Recursive rendering with `React.memo` on
+`node` reference breaks when a descendant changes: structural sharing
+preserves ancestor references, so a memoized ancestor skips re-render and
+never propagates updated props to its children.
+
+Instead, use a **flattened list** approach:
 
 1. `OutlineView` calls `useEditor(editor)` — single subscription.
-2. Extracts `rootId` from `state.doc`.
-3. Renders `<OutlineItem>` for the root, passing the full `doc` and selection
-   state.
-4. Each `OutlineItem` reads its children from `doc` via `getChildren(doc,
-node.id)`, renders child items recursively.
-5. Collapsed nodes do not render their children (children are hidden).
-6. Each `OutlineItem` is wrapped in `React.memo` with a comparator
-   checking ONLY stable per-node props: `node` reference identity
-   (structural sharing means unchanged nodes keep their reference),
-   `isSelected`, `isEditing`, and `isExpanded` (derived from
-   `node.collapsed`). The comparator MUST NOT include the `doc`
-   reference — `doc` is replaced as a whole on every mutation, so
-   including it would invalidate every item on any change, defeating
-   structural sharing. Children data is read from `doc` during render,
-   but the memo boundary is the `node` reference, which only changes
-   when that specific node is mutated.
+2. Compute a flat ordered list of visible items via depth-first traversal:
+
+```typescript
+function buildVisibleList(doc: MindmapDoc): string[] {
+  const result: string[] = []
+  function walk(nodeId: string) {
+    result.push(nodeId)
+    const node = getNode(doc, nodeId)
+    if (!node || node.collapsed) return
+    for (const childId of node.childOrder) walk(childId)
+  }
+  walk(doc.rootId)
+  return result
+}
+```
+
+3. Render the flat list as siblings (not nested):
+
+```tsx
+<div className="mml-outline-tree" role="tree">
+  {visibleIds.map((id) => {
+    const node = getNode(state.doc, id)!
+    const depth = getPath(state.doc, id).length - 1
+    return (
+      <OutlineItem
+        key={id}
+        node={node}
+        depth={depth}
+        isSelected={id === state.selectedNodeId}
+        isEditing={id === state.editingNodeId}
+        editor={editor}
+      />
+    )
+  })}
+</div>
+```
+
+4. Each `OutlineItem` is a flat row — no children, no recursion. Wrapped
+   in `React.memo` comparing `node` reference, `isSelected`, `isEditing`.
+   Structural sharing ensures only changed nodes get new references.
+
+5. Indentation is via `depth` prop, `padding-left` (not DOM nesting).
+
+6. ARIA hierarchy is communicated via `aria-level`, `aria-posinset`, and
+   `aria-setsize` attributes on each `treeitem` — no DOM nesting needed.
+
+This solves both problems: single subscription (performance) and correct
+propagation of descendant updates (each row is independent, rendered from
+the flat list rebuilt on every state change).
 
 ### Text Excerpt
 
@@ -593,8 +632,8 @@ undefined, falls back to `window.confirm`. Not intended for standalone use.
 
 ### Phase 1: Core Rendering
 
-1. `OutlineView`: single subscription, extract root, pass props down.
-2. `OutlineItem`: recursive render, memoized, reads children from doc.
+1. `OutlineView`: single subscription, build flat visible list, render items as siblings.
+2. `OutlineItem`: flat row render (NOT recursive), memoized, receives node + depth as props.
 3. `textExcerpt`: plain-text extraction from NodeContent.
 4. Node badges (child count, manual position indicator).
 
@@ -718,7 +757,7 @@ undefined, falls back to `window.confirm`. Not intended for standalone use.
 - `aria-expanded` correct for branch nodes.
 - `aria-level` matches depth.
 - `aria-selected` reflects selection.
-- Children wrapped in `role="group"`.
+- Flat list: items use `aria-posinset`/`aria-setsize` for hierarchy.
 - Roving tabindex: only focused item has `tabindex={0}`.
 - Keyboard navigation works without mouse.
 - Screen reader: labels include excerpt + child count.
