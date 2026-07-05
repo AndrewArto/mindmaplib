@@ -4,7 +4,7 @@ Status: draft.
 Date: 2026-07-05.
 Owner: Andrew Arto.
 Spec-ID: MML-B-0001.
-Spec-Version: 0.2.0+backlog.0001.
+Spec-Version: 0.3.0+backlog.0001.
 Backlog lane: backlog.
 Depends-on: none.
 Supersedes: none.
@@ -94,7 +94,6 @@ interface MindmapDoc {
   rootId: string
   nodes: Record<string, MindmapNode>
   version: number          // document revision, incremented on every transaction
-  schemaVersion: number    // serialization format version, for migrations
   meta: {
     title: string
     created: string  // ISO 8601
@@ -140,10 +139,11 @@ false. This separates persisted user intent from derived layout output.
 `version` is a monotonically increasing document revision integer. Incremented
 on every transaction. Used for optimistic concurrency by the host.
 
-`schemaVersion` is the serialization format version. Independent of `version`.
-Current: 1. If the document format changes in a future release,
-`schemaVersion` increments and `deserialize` must handle migration or reject.
-See Serialization section.
+`schemaVersion` lives in the `SerializedDoc` wrapper (see Serialization
+section), not in `MindmapDoc` itself. This keeps the in-memory document model
+clean and avoids dual-source-of-truth for schema version. Current: 1. If the
+document format changes in a future release, `schemaVersion` in the wrapper
+increments and `deserialize` must handle migration or reject.
 
 One root, no orphans. `parentId: null` is valid only for the root node.
 Attempting to set `parentId: null` on a non-root node throws. Node deletion
@@ -157,11 +157,25 @@ interface NodeContent {
   content: NodeContentBlock[]
 }
 
-interface NodeContentBlock {
-  type: 'paragraph' | 'heading' | 'bulletList' | 'orderedList' | 'codeBlock'
+// Blocks that contain inline text directly
+interface TextBlock {
+  type: 'paragraph' | 'heading' | 'codeBlock'
   attrs?: Record<string, unknown>
   content?: NodeContentInline[]
 }
+
+// Blocks that contain nested list items
+interface ListBlock {
+  type: 'bulletList' | 'orderedList'
+  content: ListItemBlock[]
+}
+
+interface ListItemBlock {
+  type: 'listItem'
+  content: TextBlock[]
+}
+
+type NodeContentBlock = TextBlock | ListBlock
 
 interface NodeContentInline {
   type: 'text'
@@ -173,7 +187,9 @@ interface NodeContentInline {
 This is a subset of the ProseMirror/TipTap JSON document format. The library
 defines its own TypeScript types for it (not importing TipTap types into core)
 so that `@mindmaplib/core` remains framework-agnostic with zero TipTap
-dependency.
+dependency. List nodes use the standard ProseMirror nesting: `bulletList`
+and `orderedList` contain `listItem` children, each containing `paragraph`
+blocks.
 
 The React adapter is responsible for:
 
@@ -454,14 +470,26 @@ coordinate space used by `node.position`). The viewport transform converts
 document coordinates to screen pixels:
 
 ```
-screenX = (docX + viewport.x) * viewport.zoom
-screenY = (docY + viewport.y) * viewport.zoom
+screenX = docX * viewport.zoom + viewport.x
+screenY = docY * viewport.zoom + viewport.y
 ```
 
+`viewport.x` and `viewport.y` are pan offsets in **screen pixels** (not
+document units). `viewport.zoom` is the scale factor.
+
 Both SVG and HTML layers are inside a single container element. The container
-applies one CSS transform: `transform: translate(viewport.x, viewport.y)
-scale(viewport.zoom)`. All children (SVG paths, HTML divs) use document
-coordinates directly. This avoids double-scaling.
+applies one CSS transform with `transform-origin: 0 0`:
+
+```css
+transform: translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.zoom});
+transform-origin: 0 0;
+```
+
+CSS transforms apply right-to-left: scale first (in document space), then
+translate (in screen pixels). This produces `screenX = docX * zoom + panX`,
+matching the formula above. All children (SVG paths, HTML divs) use document
+coordinates directly inside the transformed container. This avoids
+double-scaling — only one transform is applied, at the container level.
 
 ### Layer 1: SVG
 
@@ -778,3 +806,7 @@ updates over WebSocket. The core engine should not need rewriting.
   NodeContent type definition, EditorState, validation/error behavior,
   viewport coordinate system, security model, store semantics, schemaVersion,
   ergonomic editor methods, expanded test plan.
+- 0.3.0+backlog.0001: Codex review round 2 — fixed NodeContent list nesting
+  (TextBlock/ListBlock union), fixed viewport transform math (pan in screen
+  px, transform-origin: 0 0), removed schemaVersion from MindmapDoc (single
+  source of truth in SerializedDoc wrapper).
