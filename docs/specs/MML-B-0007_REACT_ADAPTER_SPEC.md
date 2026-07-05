@@ -74,6 +74,7 @@ All verified against npm registry on 2026-07-05.
 | -------------- | --------------------------------------------- | -------------- | ------------------ | ----------------------------------------------- |
 | Framework      | react, react-dom                              | ^18.3 \|\| ^19 | MIT                | First integration target is a React app         |
 | Rich text      | @tiptap/core, @tiptap/pm, @tiptap/starter-kit | ^3.0           | MIT                | Headless, framework-agnostic, MIT core          |
+| Link mark      | @tiptap/extension-link                        | ^3.0           | MIT                | Link not in StarterKit; required for link marks |
 | HTML sanitizer | dompurify                                     | ^3             | MPL-2.0/Apache-2.0 | Sanitize generateHTML output before DOM insert  |
 | Layout math    | d3-hierarchy                                  | ^3.1           | ISC                | Already a core dependency; adapter passes sizes |
 
@@ -82,7 +83,10 @@ All verified against npm registry on 2026-07-05.
 - TipTap v3 core packages are MIT. TipTap Pro extensions (collaboration cursor,
   etc.) are commercial and MUST NOT be used or listed as dependencies.
 - `@tiptap/starter-kit` bundles the default extensions (paragraph, heading,
-  bold, italic, code, link, lists). It is MIT.
+  bold, italic, code, lists) but does NOT include Link. The `link` mark is
+  part of the NodeContent contract (MML-B-0001), so `@tiptap/extension-link`
+  (MIT) is an explicit dependency. The default extension set passed to
+  `generateHTML()` is `[..., Link]`.
 - DOMPurify is MPL-2.0/Apache-2.0 dual-licensed. It is a runtime dependency of
   `@mindmaplib/react` only, not of core. Core remains DOM-free.
 - React is declared as `peerDependencies: ">=18.3 || >=19"`. The demo and dev
@@ -398,7 +402,7 @@ return (
 ```
 
 `generateHTML()` is from `@tiptap/core`. The extension list is configurable via
-`MindmapProps.tiptapExtensions`, defaulting to `StarterKit`.
+`MindmapProps.tiptapExtensions`, defaulting to `[..., Link]` (StarterKit plus the Link extension).
 
 ### Editing Node (Active)
 
@@ -755,9 +759,46 @@ The `MindmapProps` accepts optional callback functions:
 - `onReady(editor)`: fired once after initial mount, passing the editor
   instance. Useful for imperative access from parent components.
 
-These are convenience wrappers around `editor.subscribe()`. Internally, the
-adapter subscribes to the editor and dispatches callbacks when relevant state
-changes occur.
+### Event Routing Contract
+
+The current core `editor.subscribe(listener: (state: EditorState) => void)` only
+emits `EditorState` — it does not include the `Transaction` that was applied,
+nor does it emit on `save()`. The adapter cannot produce `onChange(doc, tx)`
+or save callbacks from this subscription alone.
+
+To resolve this, MML-B-0005 (Event API) must extend the core subscription
+contract before adapter implementation. Two options:
+
+1. **Core event enrichment (preferred).** Extend `editor.subscribe()` to pass
+   an event object: `(event: EditorEvent) => void` where `EditorEvent` is a
+   discriminated union:
+
+   ```typescript
+   type EditorEvent =
+     | { type: 'transaction'; state: EditorState; tx: Transaction }
+     | { type: 'selection'; state: EditorState; selectedNodeId: string | null }
+     | { type: 'saveResult'; state: EditorState; result: SaveResult }
+     | { type: 'saveError'; state: EditorState; error: Error }
+   ```
+
+   The adapter maps these to the callback props. `onChange` fires on
+   `transaction`, `onSelectionChange` on `selection`,
+   `onSaveError` on `saveError`, `onVersionConflict` when
+   `saveResult.result.conflict === true`.
+
+2. **Adapter interception (fallback).** If core changes are deferred, the
+   adapter wraps the editor: it intercepts every mutation method
+   (`apply`, `addChild`, `moveNode`, etc.) to capture the transaction,
+   and wraps `save()` to capture results. This adds an indirection layer but
+   avoids core API changes.
+
+The preferred path is option 1, to be finalized in MML-B-0005. The adapter
+spec assumes core will provide event metadata. If option 2 is chosen at
+implementation time, the adapter's interception layer must be documented here.
+
+Regardless of the chosen option, the adapter must NOT silently swallow events.
+If a callback prop is undefined, the event is simply not dispatched to the
+host — no error, no warning.
 
 ## Component Props Summary
 
@@ -871,6 +912,7 @@ packages/react/
   },
   "dependencies": {
     "@tiptap/core": "^3.0",
+    "@tiptap/extension-link": "^3.0",
     "@tiptap/pm": "^3.0",
     "@tiptap/starter-kit": "^3.0",
     "dompurify": "^3",
