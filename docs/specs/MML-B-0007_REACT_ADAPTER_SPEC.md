@@ -130,12 +130,28 @@ CI-enforced via dependency-cruiser, extending the rules from MML-B-0001:
 interface MindmapProps {
   editor: MindmapEditor // required: engine instance from core
   className?: string // container class for CSS customization
+
+  // Layout
   layoutMode?: LayoutMode // initial layout mode (default: 'free-float')
+  selectToCenter?: boolean // outline click centers node in canvas (default: false)
+
+  // Outline
   showOutline?: boolean // render outline panel (default: true)
   outlineWidth?: number // pixel width of outline panel (default: 280)
-  tiptapExtensions?: Extensions // override default TipTap extension set
-  customNodeRenderer?: CustomNodeRenderer
-  onChange?: (doc: MindmapDoc, tx: Transaction) => void
+
+  // Canvas
+  showGrid?: boolean // render background grid (default: true)
+  gridType?: 'dots' | 'lines' | 'none' // grid style (default: 'dots')
+
+  // Rich text
+  tiptapExtensions?: Extensions // override default extension set (default: [StarterKit, Link])
+  customNodeRenderer?: CustomNodeRenderer // custom node content renderer
+
+  // Interaction
+  confirmDelete?: (node: MindmapNode) => Promise<boolean> | boolean // default: window.confirm
+
+  // Callbacks
+  onChange?: (tx: Transaction, doc: MindmapDoc) => void
   onSelectionChange?: (nodeId: string | null) => void
   onSaveError?: (error: Error) => void
   onVersionConflict?: () => void
@@ -250,11 +266,13 @@ The critical performance constraint: render 500+ nodes without lag.
 3. **Memoized node components.** `<NodeView>` is wrapped in `React.memo` with
    a custom comparator that checks `node` reference identity (structural sharing
    from immutable updates means unchanged nodes keep their reference),
-   `isEditing` flag, `isSelected` flag, AND the precomputed `html` string. If
-   the host changes `tiptapExtensions` or `customNodeRenderer`, the recomputed
-   `html` value (from `useMemo`) changes its reference, invalidating the memo.
-   Without including `html`, nodes would render stale sanitized output until
-   their node data changed. Unchanged nodes skip re-render entirely.
+   `isEditing` flag, `isSelected` flag, the precomputed `html` string, AND the
+   `customNodeRenderer` function reference. The `html` value (from `useMemo`)
+   covers `tiptapExtensions` changes, but if only `customNodeRenderer` changes,
+   `html` may not change (it is derived from content + extensions, not the
+   renderer). Including the renderer reference in the comparator ensures all
+   nodes re-render when the host swaps the renderer. Unchanged nodes skip
+   re-render entirely
 
 4. **Single transform on the container.** The nodes-layer and SVG layer are
    children of one container that applies the viewport CSS transform. Pan/zoom
@@ -863,7 +881,8 @@ Implements MML-B-0005.
 
 The `MindmapProps` accepts optional callback functions:
 
-- `onChange(doc, tx)`: fired after every transaction applied to the editor. The
+- `onChange(tx, doc)`: fired after every transaction applied to the editor. The
+  argument order matches MML-B-0005: transaction first, then the resulting doc. The
   host can use this for auto-save, analytics, or logging.
 - `onSelectionChange(nodeId)`: fired when `selectedNodeId` changes.
 - `onSaveError(error)`: fired when `editor.save()` rejects (store error,
@@ -877,7 +896,7 @@ The `MindmapProps` accepts optional callback functions:
 
 The current core `editor.subscribe(listener: (state: EditorState) => void)` only
 emits `EditorState` — it does not include the `Transaction` that was applied,
-nor does it emit on `save()`. The adapter cannot produce `onChange(doc, tx)`
+nor does it emit on `save()`. The adapter cannot produce `onChange(tx, doc)`
 or save callbacks from this subscription alone.
 
 To resolve this, MML-B-0005 (Event API) must extend the core subscription
@@ -941,7 +960,7 @@ interface MindmapProps {
   confirmDelete?: (node: MindmapNode) => Promise<boolean> | boolean // default: window.confirm
 
   // Callbacks
-  onChange?: (doc: MindmapDoc, tx: Transaction) => void
+  onChange?: (tx: Transaction, doc: MindmapDoc) => void
   onSelectionChange?: (nodeId: string | null) => void
   onSaveError?: (error: Error) => void
   onVersionConflict?: () => void
