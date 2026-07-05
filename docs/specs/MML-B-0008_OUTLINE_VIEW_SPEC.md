@@ -365,19 +365,29 @@ Each `OutlineRow` is a drop target with three zones:
 function getDropZone(
   e: React.DragEvent,
   rowElement: HTMLElement,
-): 'before' | 'after' | 'inside' {
+  targetId: string,
+  doc: MindmapDoc,
+): 'before' | 'after' | 'inside' | null {
+  // Root has no siblings — 'before' and 'after' are disabled.
+  // Returns null to indicate "no valid drop zone" (drop rejected).
+  const target = getNode(doc, targetId)!
+  const isRoot = target.parentId === null
+
   const rect = rowElement.getBoundingClientRect()
   const y = e.clientY - rect.top
   const h = rect.height
-  if (y < h * 0.25) return 'before'
-  if (y > h * 0.75) return 'after'
-  return 'inside'
+  const raw = y < h * 0.25 ? 'before' : y > h * 0.75 ? 'after' : 'inside'
+
+  if (isRoot && raw !== 'inside') return null // reject: root has no siblings
+  return raw
 }
 ```
 
-- `onDragOver`: compute drop zone, show visual indicator (CSS class on the
-  row: `mml-outline-drop--before`, `--after`, `--inside`). Call
-  `e.preventDefault()` to allow drop.
+- `onDragOver`: compute drop zone via `getDropZone`. If zone is `null`
+  (rejected, e.g. root before/after), do NOT call `preventDefault()` — the
+  browser will show a "no-drop" cursor and the drop will not fire. If zone is
+  valid, show visual indicator (CSS class: `mml-outline-drop--before`,
+  `--after`, `--inside`) and call `e.preventDefault()`.
 - `onDragLeave`: clear drop indicator.
 
 ### Drop Action
@@ -391,18 +401,14 @@ function handleDrop(
   zone: 'before' | 'after' | 'inside',
 ) {
   if (draggedId === targetId) return // no-op
-  if (isDescendant(doc, targetId, draggedId)) return // reject: would create cycle
+  if (isDescendant(doc, targetId, draggedId)) return // reject: cycle
+  if (zone === null) return // rejected by getDropZone (e.g. root before/after)
 
   if (zone === 'inside') {
     editor.moveNode(draggedId, targetId, null) // first child
   } else {
     const target = getNode(doc, targetId)!
-    // Root has no parent — coerce sibling drop to 'inside'.
-    if (target.parentId === null) {
-      editor.moveNode(draggedId, targetId, null)
-      return
-    }
-    const parentId = target.parentId
+    const parentId = target.parentId! // safe: getDropZone rejects root siblings
     const insertAfter =
       zone === 'before' ? getPrevSibling(doc, targetId) : targetId
     editor.moveNode(draggedId, parentId, insertAfter)
@@ -417,8 +423,11 @@ Dropping a node onto its own descendant is rejected. The adapter checks
 check fails, the drop is a no-op with no visual feedback change (the indicator
 was cleared on dragOver if the target was a descendant).
 
-Root node is not a valid drop target for 'before' or 'after' (it has no
-siblings). Root CAN be an 'inside' target (dropping as first child of root).
+Root before/after zones are disabled at the `getDropZone` level: the function
+returns `null`, `onDragOver` does not call `preventDefault()`, and no drop
+indicator is shown. The browser displays a "no-drop" cursor. Root CAN be an
+'inside' target (dropping as first child of root). This ensures the visual
+feedback and mutation always agree.
 
 ### Visual Feedback
 
