@@ -246,7 +246,7 @@ export class MindmapEditor {
     if (this.undoStack.length === 0) return
     this.redoStack.push(this.doc)
     const prev = this.undoStack.pop()!
-    this.doc = this.bumpRevision(prev)
+    this.doc = this.bumpRevision(prev, this.doc.version)
     this.notify()
   }
 
@@ -254,7 +254,7 @@ export class MindmapEditor {
     if (this.redoStack.length === 0) return
     this.undoStack.push(this.doc)
     const next = this.redoStack.pop()!
-    this.doc = this.bumpRevision(next)
+    this.doc = this.bumpRevision(next, this.doc.version)
     this.notify()
   }
 
@@ -317,11 +317,16 @@ export class MindmapEditor {
     }
   }
 
-  /** Increment version + refresh meta.updated (undo/redo revision bump). */
-  private bumpRevision(doc: MindmapDoc): MindmapDoc {
+  /**
+   * Produce a new doc snapshot with a version strictly greater than
+   * `baseVersion` (the current live revision) and a refreshed meta.updated.
+   * Undo/redo must never reuse or go below the live revision, otherwise
+   * isDirty() and optimistic-concurrency checks break.
+   */
+  private bumpRevision(doc: MindmapDoc, baseVersion: number): MindmapDoc {
     return {
       ...doc,
-      version: doc.version + 1,
+      version: baseVersion + 1,
       meta: { ...doc.meta, updated: new Date().toISOString() },
     }
   }

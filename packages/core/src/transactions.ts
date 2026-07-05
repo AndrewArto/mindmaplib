@@ -203,6 +203,13 @@ export function applyOp(doc: MindmapDoc, op: TransactionOp): MindmapDoc {
           op.parentId,
         )
       }
+      if (next.nodes[op.nodeId]) {
+        throw new MindmapError(
+          `addNode: node ${op.nodeId} already exists`,
+          'INVALID_TRANSACTION',
+          op.nodeId,
+        )
+      }
       const content = op.content ? normalizeContent(op.content) : emptyContent()
       const node: MindmapNode = {
         id: op.nodeId,
@@ -404,7 +411,7 @@ export function applyTransaction(
   opts?: { strict?: boolean },
 ): MindmapDoc {
   if (opts?.strict && tx.baseVersion !== doc.version) {
-    throw new VersionConflictError(doc.version, tx.baseVersion, tx.id)
+    throw new VersionConflictError(tx.baseVersion, doc.version, tx.id)
   }
   let next = doc
   for (const op of tx.ops) {

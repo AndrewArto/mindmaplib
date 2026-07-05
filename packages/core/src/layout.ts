@@ -53,17 +53,23 @@ export function computeLayoutOps(
     return kids.length > 0 ? kids : null
   })
 
+  // d3 tree nodeSize is [siblingSpacing, depthSpacing].
+  // For tree-horizontal the depth axis is horizontal, so it must use
+  // width + spacingX (otherwise 120px-wide nodes overlap at 60px intervals).
+  const siblingW =
+    mode === 'tree-horizontal'
+      ? defaultNodeSize.height + spacingY
+      : defaultNodeSize.width + spacingX
+  const depthW =
+    mode === 'tree-horizontal'
+      ? defaultNodeSize.width + spacingX
+      : defaultNodeSize.height + spacingY
+
   // Lay out. For radial we use an angular size so d.x ∈ [0, 2π].
   const laid: HierarchyPointNode<MindmapNode> =
     mode === 'radial'
-      ? tree<MindmapNode>().size([
-          2 * Math.PI,
-          defaultNodeSize.height + spacingY,
-        ])(h)
-      : tree<MindmapNode>().nodeSize([
-          defaultNodeSize.width + spacingX,
-          defaultNodeSize.height + spacingY,
-        ])(h)
+      ? tree<MindmapNode>().size([2 * Math.PI, depthW])(h)
+      : tree<MindmapNode>().nodeSize([siblingW, depthW])(h)
 
   const toPos = (d: HierarchyPointNode<MindmapNode>): Position => {
     const x = d.x ?? 0
@@ -87,10 +93,11 @@ export function computeLayoutOps(
     const d3Pos = toPos(d)
     if (node.manualPosition && node.position) {
       // Manual anchor: shift this subtree so the anchor sits at its stored
-      // position. No op for the anchor itself.
+      // position. No op for the anchor itself. Offset is RESET (not
+      // accumulated) to avoid double-counting ancestor shifts.
       const newOffset: Position = {
-        x: offset.x + node.position.x - d3Pos.x,
-        y: offset.y + node.position.y - d3Pos.y,
+        x: node.position.x - d3Pos.x,
+        y: node.position.y - d3Pos.y,
       }
       if (d.children) for (const c of d.children) walk(c, newOffset)
     } else {

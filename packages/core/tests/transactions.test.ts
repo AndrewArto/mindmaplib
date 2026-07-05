@@ -166,9 +166,39 @@ describe('applyTransaction', () => {
 
   it('applies regardless of baseVersion when not strict (default)', () => {
     const doc = createDoc('D')
+    const advanced = applyTransaction(
+      doc,
+      buildTransaction(doc, createAddNodeOp(doc.rootId, 'a')),
+    )
+    // stale baseVersion but different nodeId — non-strict should succeed
+    const staleTx = buildTransaction(doc, createAddNodeOp(doc.rootId, 'b'))
+    expect(() => applyTransaction(advanced, staleTx)).not.toThrow()
+  })
+
+  it('rejects addNode with a duplicate nodeId (P2)', () => {
+    const doc = createDoc('D')
+    const next = applyOp(doc, createAddNodeOp(doc.rootId, 'a'))
+    expect(() => applyOp(next, createAddNodeOp(doc.rootId, 'a'))).toThrow()
+  })
+
+  it('VersionConflictError has expected/actual in correct order (P3)', () => {
+    const doc = createDoc('D')
+    // tx built at version 0
     const tx = buildTransaction(doc, createAddNodeOp(doc.rootId, 'a'))
+    // advance doc to version 1
     const advanced = applyTransaction(doc, tx)
-    // stale tx applied non-strictly
-    expect(() => applyTransaction(advanced, tx)).not.toThrow()
+    try {
+      applyTransaction(advanced, tx, { strict: true })
+      expect.fail('should have thrown')
+    } catch (e) {
+      const err = e as InstanceType<typeof Error> & {
+        expected: number
+        actual: number
+      }
+      expect(err.name).toBe('VersionConflictError')
+      // tx expected baseVersion 0, doc is at version 1
+      expect(err.expected).toBe(0)
+      expect(err.actual).toBe(1)
+    }
   })
 })

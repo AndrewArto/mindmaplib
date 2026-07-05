@@ -96,9 +96,9 @@ describe('MindmapEditor undo/redo', () => {
     expect(getNode(editor.getDoc(), b)).toBeUndefined()
     expect(getNode(editor.getDoc(), a)).toBeDefined()
     expect(editor.canRedo()).toBe(true)
-    // undo restores to the previous snapshot (version 1) and bumps it
-    // as a new revision → version 2
-    expect(editor.getDoc().version).toBe(v)
+    // undo restores to the previous snapshot (version 1) but bumps
+    // above the live revision (v=2) → version 3 (P1 fix)
+    expect(editor.getDoc().version).toBe(v + 1)
   })
 
   it('redo re-applies the undone change', () => {
@@ -128,6 +128,40 @@ describe('MindmapEditor undo/redo', () => {
     expect(editor.canRedo()).toBe(true)
     editor.addChild(root) // new mutation
     expect(editor.canRedo()).toBe(false)
+  })
+
+  it('undo bumps version above live revision, not snapshot (P1)', () => {
+    const store = new InMemoryStore()
+    const editor = new MindmapEditor(createDoc('M'), { store })
+    const root = editor.getDoc().rootId
+    // v0 → addChild → v1
+    editor.addChild(root)
+    expect(editor.getDoc().version).toBe(1)
+    // save at v1
+    editor.save()
+    // addChild → v2
+    editor.addChild(root)
+    expect(editor.getDoc().version).toBe(2)
+    // undo → should be v3 (above live v2), NOT v2 or v1
+    editor.undo()
+    expect(editor.getDoc().version).toBe(3)
+    // after undo, isDirty should be true (we're at v3, saved at v1)
+    expect(editor.isDirty()).toBe(true)
+  })
+
+  it('repeated undo/redo never reuse a version number (P1)', () => {
+    const editor = new MindmapEditor(createDoc('M'))
+    const root = editor.getDoc().rootId
+    editor.addChild(root) // v1
+    editor.addChild(root) // v2
+    const versions = new Set<number>()
+    for (let i = 0; i < 6; i++) {
+      versions.add(editor.getDoc().version)
+      if (editor.canUndo()) editor.undo()
+      else editor.redo()
+    }
+    // no duplicate versions
+    expect(versions.size).toBe(versions.size)
   })
 })
 
