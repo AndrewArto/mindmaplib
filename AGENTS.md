@@ -82,7 +82,7 @@ pnpm --filter demo build  # production build
   coordinates.
 - **Rendering**: two-layer viewport — SVG for edges/shapes/grid, absolutely
   positioned HTML divs for node content. One transform to rule them all.
-- **Rich text**: TipTap v2 core (MIT). At most ONE active editor instance at a
+- **Rich text**: TipTap v3 core (MIT). At most ONE active editor instance at a
   time (the node being edited). All other nodes render static HTML from
   `generateHTML()`.
 - **Storage**: library exports `MindmapStore` interface. Host implements it
