@@ -152,8 +152,12 @@ function buildVisibleList(doc: MindmapDoc): string[] {
 ```
 
 4. Each `OutlineItem` is a flat row — no children, no recursion. Wrapped
-   in `React.memo` comparing `node` reference, `isSelected`, `isEditing`.
-   Structural sharing ensures only changed nodes get new references.
+   in `React.memo` comparing `node` reference, `isSelected`, `isEditing`,
+   `depth`, and `focusedId` (the roving-tabindex focus target). When a branch
+   is moved or focus changes, rows need updated indentation/`aria-level`/
+   `tabindex` even though the `node` object is unchanged (structural sharing).
+   Without `depth` and `focusedId` in the comparator, those rows would be
+   stale. Structural sharing ensures only changed nodes get new references.
 
 5. Indentation is via `depth` prop, `padding-left` (not DOM nesting).
 
@@ -513,13 +517,28 @@ filters the outline to show only items matching the query (and their ancestors).
 
 ### Matching
 
+Search uses a **full plain-text extraction** of the node content, NOT the
+truncated `textExcerpt` (which is limited to 80 chars for display). A query
+matching text beyond the first 80 characters or outside the first excerpted
+block must still match.
+
 ```typescript
+function fullPlainText(content: NodeContent): string {
+  // Walk ALL content blocks depth-first, concatenate ALL text inlines.
+  // No truncation, no maxLength. Strip marks.
+  // Used for search matching only — not for display.
+}
+
 function matchesSearch(node: MindmapNode, query: string): boolean {
   if (!query) return true
-  const text = textExcerpt(node.content, MAX_TEXT_LENGTH).toLowerCase()
+  const text = fullPlainText(node.content).toLowerCase()
   return text.includes(query.toLowerCase())
 }
 ```
+
+`textExcerpt` (80 chars, for row display) and `fullPlainText` (unlimited, for
+search) are separate functions. Display always uses the excerpt; search always
+uses the full text.
 
 ### Filter Behavior
 
