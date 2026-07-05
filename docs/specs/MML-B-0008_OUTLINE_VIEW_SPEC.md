@@ -151,7 +151,6 @@ function buildVisibleList(doc: MindmapDoc): string[] {
         setSize={getSetSize(state.doc, id)}
         editor={editor}
       />
-      />
     )
   })}
 </div>
@@ -506,29 +505,58 @@ node is not visible in the outline. The auto-expand MUST be ephemeral
 (non-undoable) — it is a view-level convenience, not a user-initiated change.
 Applying it as an undoable transaction would create an undo loop (see below).
 
+Auto-expand MUST NOT mutate the persisted document (`collapsed` flags,
+`doc.version`, `isDirty()`). Applying a transaction — even with `skipUndo` —
+increments `doc.version` and marks the doc dirty, which triggers saves and
+breaks the "ephemeral" contract.
+
+Instead, auto-expand uses a **view-only expansion set** — a `Set<string>` of
+node IDs tracked in `OutlineView` state (React state, not document state):
+
 ```typescript
-function ensureVisible(editor: MindmapEditor, nodeId: string): void {
-  const doc = editor.getDoc()
-  const ops: TransactionOp[] = []
+function ensureVisible(
+  doc: MindmapDoc,
+  nodeId: string,
+  ephemeralExpand: Set<string>,
+): Set<string> {
+  const next = new Set(ephemeralExpand)
   let parentId = getNode(doc, nodeId)!.parentId
   while (parentId !== null) {
     const parent = getNode(doc, parentId)!
-    if (parent.collapsed) {
-      ops.push(createToggleCollapsedOp(parentId))
-    }
+    if (parent.collapsed) next.add(parentId)
     parentId = parent.parentId
   }
-  if (ops.length > 0) {
-    editor.apply(buildTransaction(doc, ops), { skipUndo: true })
-  }
+  return next
 }
 ```
 
-If it were undoable, pressing Undo after a selection would restore collapsed
-ancestors while `selectedNodeId` still points at the hidden node, triggering
-`ensureVisible` again and re-pushing the expand onto history — an un-undoable
-cycle. Implementation: `editor.apply(tx, { skipUndo: true })` must be added to
-core. Alternative: view-only "ephemerally expanded" tracking outside the doc.
+The `OutlineView` passes this set to `buildVisibleList`:
+
+```typescript
+function buildVisibleList(
+  doc: MindmapDoc,
+  ephemeralExpand: Set<string>,
+): string[] {
+  const result: string[] = []
+  function walk(nodeId: string) {
+    result.push(nodeId)
+    const node = getNode(doc, nodeId)
+    if (!node) return
+    // Node is expanded if: not collapsed, OR ephemerally expanded (auto-reveal)
+    const effectivelyExpanded = !node.collapsed || ephemeralExpand.has(nodeId)
+    if (!effectivelyExpanded) return
+    for (const childId of node.childOrder) walk(childId)
+  }
+  walk(doc.rootId)
+  return result
+}
+```
+
+This approach:
+
+- Does NOT mutate `doc.collapsed`, `doc.version`, or `isDirty()`.
+- Is inherently non-undoable (it is React state, not document history).
+- Clears automatically when the component unmounts or selection moves away.
 
 ### Scroll to Selected
 
