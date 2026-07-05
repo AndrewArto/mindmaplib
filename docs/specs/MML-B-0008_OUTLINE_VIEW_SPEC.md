@@ -146,7 +146,11 @@ function buildVisibleList(doc: MindmapDoc): string[] {
         depth={depth}
         isSelected={id === state.selectedNodeId}
         isEditing={id === state.editingNodeId}
+        isFocused={id === state.focusedNodeId}
+        posInSet={getPosInSet(state.doc, id)}
+        setSize={getSetSize(state.doc, id)}
         editor={editor}
+      />
       />
     )
   })}
@@ -303,6 +307,12 @@ moves to the new item via a ref.
 Root deletion: core throws `ROOT_IMMUTABLE` when `deleteNode(rootId)` is
 called. The outline keyboard handler MUST guard against this: if the focused
 node is the root, Delete/Backspace is a no-op (no confirm dialog, no error).
+
+Search-mode keyboard: when a search filter is active, ArrowLeft and
+ArrowRight do NOT toggle `collapsed` — they are navigation-only (move focus
+within the filtered list). Collapse/expand mutations are disabled during
+search to prevent polluting the `collapsed` flags. Clearing the search
+restores the prior collapse/expand state.
 
 Note: Tab/Shift+Tab (create child/sibling) are canvas-only shortcuts. In the
 outline, Tab follows browser default (move to next focusable element outside
@@ -513,9 +523,18 @@ function ensureVisible(editor: MindmapEditor, nodeId: string): void {
 }
 ```
 
-Building all toggle ops into one transaction ensures the auto-expand is a
-single undo step and the editor's live state is updated through the public
-API.
+The auto-reveal MUST be ephemeral (non-undoable) — it is a view-level
+convenience, not a user-initiated document change. If it were undoable,
+pressing Undo after a selection would restore collapsed ancestors while
+`selectedNodeId` still points at the hidden node, triggering `ensureVisible`
+again and re-pushing the expand onto history. This creates an un-undoable
+cycle and pollutes document history.
+
+Implementation: the adapter needs a core API to apply a transaction without
+pushing to the undo stack (e.g., `editor.apply(tx, { skipUndo: true })`), or
+the reveal is implemented as a view-only state (tracking "ephemerally
+expanded" nodes outside the document model). The preferred approach is a
+`skipUndo` option on `editor.apply`, to be added to core per this spec.
 
 ### Scroll to Selected
 
