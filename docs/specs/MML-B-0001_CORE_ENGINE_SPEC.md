@@ -4,7 +4,7 @@ Status: draft.
 Date: 2026-07-05.
 Owner: Andrew Arto.
 Spec-ID: MML-B-0001.
-Spec-Version: 0.4.1+backlog.0001.
+Spec-Version: 0.4.2+backlog.0001.
 Backlog lane: backlog.
 Depends-on: none.
 Supersedes: none.
@@ -300,7 +300,8 @@ type TransactionOp =
   | { type: 'deleteNode'; nodeId: string }
   | { type: 'moveNode'; nodeId: string; newParentId: string; insertAfter?: string | null }
   | { type: 'updateContent'; nodeId: string; content: NodeContent }
-  | { type: 'setPosition'; nodeId: string; position: { x: number; y: number } }
+  | { type: 'setPosition'; nodeId: string; position: { x: number; y: number } }           // user drag: sets manualPosition=true
+  | { type: 'layoutPosition'; nodeId: string; position: { x: number; y: number } }         // auto-layout: keeps manualPosition=false
   | { type: 'resetManualPosition'; nodeId: string }
   | { type: 'toggleCollapsed'; nodeId: string }
 
@@ -332,6 +333,7 @@ function createDeleteNodeOp(nodeId: string): TransactionOp
 function createMoveNodeOp(nodeId: string, newParentId: string, insertAfter?: string | null): TransactionOp
 function createUpdateContentOp(nodeId: string, content: NodeContent): TransactionOp
 function createSetPositionOp(nodeId: string, position: { x: number; y: number }): TransactionOp
+function createLayoutPositionOp(nodeId: string, position: { x: number; y: number }): TransactionOp
 function createResetManualPositionOp(nodeId: string): TransactionOp
 function createToggleCollapsedOp(nodeId: string): TransactionOp
 ```
@@ -380,6 +382,7 @@ function deleteNode(doc: MindmapDoc, nodeId: string): MindmapDoc
 function moveNode(doc: MindmapDoc, nodeId: string, newParentId: string, insertAfter?: string | null): MindmapDoc
 function updateNodeContent(doc: MindmapDoc, nodeId: string, content: NodeContent): MindmapDoc
 function setNodePosition(doc: MindmapDoc, nodeId: string, position: { x: number; y: number }): MindmapDoc
+function resetManualPosition(doc: MindmapDoc, nodeId: string): MindmapDoc
 function toggleNodeCollapsed(doc: MindmapDoc, nodeId: string): MindmapDoc
 ```
 
@@ -401,6 +404,7 @@ All tree operations validate inputs and throw `MindmapError` on invalid state:
 - `updateNodeContent`: nodeId must exist. Content must match NodeContent shape.
   Throws on malformed content.
 - `setNodePosition`: nodeId must exist. Coordinates must be finite numbers.
+- `resetManualPosition`: nodeId must exist. Sets manualPosition=false, position=null.
 - `toggleNodeCollapsed`: nodeId must exist.
 
 `deserialize` validates the JSON structure. Throws `MindmapError` on: missing
@@ -428,13 +432,19 @@ class MindmapError extends Error {
 // --- Document ---
 function createDoc(title: string): MindmapDoc
 
-// --- Transaction factories ---
-function createAddNodeTx(parentId: string, insertAfter?: string | null, content?: NodeContent): Transaction
-function createDeleteNodeTx(nodeId: string): Transaction
-function createMoveNodeTx(nodeId: string, newParentId: string, insertAfter?: string | null): Transaction
-function createUpdateContentTx(nodeId: string, content: NodeContent): Transaction
-function createSetPositionTx(nodeId: string, position: { x: number; y: number }): Transaction
-function createToggleCollapsedTx(nodeId: string): Transaction
+// --- Operation factories (construct TransactionOp values) ---
+function createAddNodeOp(parentId: string, nodeId: string, opts?: { insertAfter?: string | null; content?: NodeContent }): TransactionOp
+function createDeleteNodeOp(nodeId: string): TransactionOp
+function createMoveNodeOp(nodeId: string, newParentId: string, insertAfter?: string | null): TransactionOp
+function createUpdateContentOp(nodeId: string, content: NodeContent): TransactionOp
+function createSetPositionOp(nodeId: string, position: { x: number; y: number }): TransactionOp
+function createLayoutPositionOp(nodeId: string, position: { x: number; y: number }): TransactionOp
+function createResetManualPositionOp(nodeId: string): TransactionOp
+function createToggleCollapsedOp(nodeId: string): TransactionOp
+function createLayoutPositionOp(nodeId: string, position: { x: number; y: number }): TransactionOp
+
+// --- Transaction builder (construct full Transaction with baseVersion) ---
+function buildTransaction(doc: MindmapDoc, ops: TransactionOp | TransactionOp[], opts?: { actorId?: string }): Transaction
 
 // --- Pure tree operations (convenience wrappers) ---
 function addNode(doc: MindmapDoc, parentId: string, opts?: { insertAfter?: string | null; content?: NodeContent }): MindmapDoc
@@ -470,7 +480,7 @@ function computeLayout(doc: MindmapDoc, mode: LayoutMode, options?: LayoutOption
 // Does NOT mutate the input doc. The caller (MindmapEditor) wraps the
 // result into a transaction internally:
 //   1. Call computeLayout(oldDoc, mode, opts) -> newDoc
-//   2. Extract position changes as setPosition/resetManualPosition ops
+//   2. Extract position changes as layoutPosition ops
 //      for each affected node (manualPosition === false nodes only)
 //   3. Build a Transaction with those ops
 //   4. Apply via applyTransaction -> new doc with incremented version
@@ -892,6 +902,8 @@ mindmaplib/
   version.
 - setNodePosition: sets coordinates, sets manualPosition=true, validates finite
   numbers.
+- resetManualPosition: sets manualPosition=false, position=null.
+- layoutPosition op: sets position, keeps manualPosition=false.
 - toggleNodeCollapsed: flips flag.
 - getChildren: returns nodes in childOrder order.
 - getDescendants / getPath / getAncestors: correct traversal.
@@ -993,3 +1005,6 @@ updates over WebSocket. The core engine should not need rewriting.
 - 0.4.1+backlog.0001: Codex review v0.4.0 — added buildTransaction factory,
   VersionConflictError + strict mode, resetManualPosition in all op lists,
   computeLayout transaction-wrapping semantics.
+- 0.4.2+backlog.0001: Codex review v0.4.1 — replaced create*Tx with
+  create*Op + buildTransaction in public API, added layoutPosition op
+  (auto-layout without marking manual), resetManualPosition in all lists.
