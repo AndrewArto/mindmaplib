@@ -145,6 +145,11 @@ interface MindmapProps {
 
   // Rich text
   tiptapExtensions?: Extensions // override default extension set (default: [StarterKit, Link])
+  // WARNING: custom extensions emitting nodes/marks outside the NodeContent
+  // schema (MML-B-0001) will be silently stripped by normalizeContent on
+  // edit exit. Only use extensions compatible with the fixed schema:
+  // paragraph, heading, bulletList, orderedList, codeBlock, bold, italic,
+  // code, link. Schema extension is a future core concern (see Non-Goals).
   customNodeRenderer?: CustomNodeRenderer // custom node content renderer
 
   // Interaction
@@ -155,6 +160,7 @@ interface MindmapProps {
   onSelectionChange?: (nodeId: string | null) => void
   onSaveError?: (error: Error) => void
   onVersionConflict?: () => void
+  onNodeDoubleClick?: (nodeId: string, event: React.MouseEvent) => void
   onReady?: (editor: MindmapEditor) => void
 }
 
@@ -348,9 +354,12 @@ fit-to-screen viewport itself:
 
 1. Read the container's pixel dimensions (`containerWidth`,
    `containerHeight`) from the DOM ref.
-2. Query all positioned nodes from `editor.getDoc()` to find bounding box.
-   For each positioned node, use its measured dimensions (from NodeMeasures)
-   or the default size (120x40) to compute the full extent:
+2. Query VISIBLE positioned nodes from `editor.getDoc()`. A node is visible
+   if none of its ancestors are collapsed (`collapsed === true`). Descendants
+   of collapsed nodes are not rendered and their stored positions should not
+   affect the bounding box — including them would zoom out to empty space.
+   For each visible positioned node, use its measured dimensions (from
+   NodeMeasures) or the default size (120x40) to compute the full extent:
    `minX = min(position.x)`, `maxX = max(position.x + nodeWidth)`,
    `minY = min(position.y)`, `maxY = max(position.y + nodeHeight)`.
    Using anchor points alone would crop wide/tall node bodies.
@@ -641,17 +650,20 @@ function OutlineItem({
           {textExcerpt(node.content)}
         </span>
       </div>
-      {isExpanded &&
-        children.map((child) => (
-          <OutlineItem
-            key={child.id}
-            node={child}
-            doc={doc}
-            editor={editor}
-            selectedId={selectedId}
-            level={level + 1}
-          />
-        ))}
+      {isExpanded && (
+        <div role="group">
+          {children.map((child) => (
+            <OutlineItem
+              key={child.id}
+              node={child}
+              doc={doc}
+              editor={editor}
+              selectedId={selectedId}
+              level={level + 1}
+            />
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -889,6 +901,10 @@ The `MindmapProps` accepts optional callback functions:
   network failure).
 - `onVersionConflict()`: fired when `store.save()` returns
   `SaveResult.conflict === true`.
+- `onNodeDoubleClick(nodeId, event)`: fired when a node is double-clicked,
+  before entering edit mode. The host can use this for custom actions (open
+  inspector, navigate, etc.). If the callback calls `e.preventDefault()`, edit
+  mode is not entered. Without this, the double-click always enters editing.
 - `onReady(editor)`: fired once after initial mount, passing the editor
   instance. Useful for imperative access from parent components.
 
@@ -954,6 +970,7 @@ interface MindmapProps {
 
   // Rich text
   tiptapExtensions?: Extensions // default: [StarterKit, Link]
+  // Schema-constrained: only NodeContent-compatible extensions (see above)
   customNodeRenderer?: CustomNodeRenderer
 
   // Interaction
@@ -964,6 +981,7 @@ interface MindmapProps {
   onSelectionChange?: (nodeId: string | null) => void
   onSaveError?: (error: Error) => void
   onVersionConflict?: () => void
+  onNodeDoubleClick?: (nodeId: string, event: React.MouseEvent) => void
   onReady?: (editor: MindmapEditor) => void
 
   // Styling
