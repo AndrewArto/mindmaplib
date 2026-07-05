@@ -47,13 +47,25 @@ function pickNode(raw: unknown): MindmapNode {
     )
   }
 
-  const position =
-    n.position && typeof n.position === 'object'
-      ? ({
-          x: Number((n.position as { x?: unknown }).x),
-          y: Number((n.position as { y?: unknown }).y),
-        } as MindmapNode['position'])
-      : null
+  // Validate position coordinates — reject non-number or non-finite values
+  // instead of coercing (Number(null) = 0 would silently move nodes to origin).
+  let position: MindmapNode['position'] = null
+  if (n.position && typeof n.position === 'object') {
+    const px = (n.position as { x?: unknown }).x
+    const py = (n.position as { y?: unknown }).y
+    if (
+      typeof px !== 'number' ||
+      typeof py !== 'number' ||
+      !Number.isFinite(px) ||
+      !Number.isFinite(py)
+    ) {
+      throw new MindmapError(
+        `deserialize: node '${n.id}' has non-finite or non-number position`,
+        'MALFORMED_JSON',
+      )
+    }
+    position = { x: px, y: py }
+  }
   return {
     id: n.id,
     parentId: n.parentId as string | null,
