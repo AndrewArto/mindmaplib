@@ -1,6 +1,7 @@
 // Build script: compile worker.ts → dist/_worker.js for CF Pages
-// Runs from the demo/ directory (pnpm --filter demo)
+// Also copies _routes.json to dist/
 import { build } from 'esbuild'
+import { copyFileSync } from 'fs'
 
 await build({
   entryPoints: ['worker.ts'],
@@ -15,4 +16,7 @@ await build({
   },
 })
 
-console.log('_worker.js built → dist/_worker.js')
+// Copy _routes.json to dist so CF knows which paths go to the worker
+copyFileSync('_routes.json', 'dist/_routes.json')
+
+console.log('_worker.js + _routes.json built → dist/')
