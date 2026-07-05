@@ -5,7 +5,7 @@ Status: project memory for deploying the mindmaplib `demo/` package to
 
 This is the single source of truth for **access** and **delivery** to the demo's
 public host. Dev rules live in `AGENTS.md` and `docs/runbooks/DEVELOPMENT_PROCESS.md`
-(summarised in §5); this runbook covers everything needed to ship the build.
+(summarised in §6); this runbook covers everything needed to ship the build.
 
 > Scope note: this file is **project memory**, intentionally separate from any
 > agent's general profile memory. Keep deployment facts here, not in chat bots'
@@ -15,22 +15,22 @@ public host. Dev rules live in `AGENTS.md` and `docs/runbooks/DEVELOPMENT_PROCES
 
 ## 1. What ships where
 
-| Item            | Value                                                  |
-| --------------- | ------------------------------------------------------ |
-| Public URL      | `https://mapdemo.tripleadigital.io`                    |
-| Host            | Cloudflare Pages                                       |
-| Source repo     | `github.com/AndrewArto/mindmaplib` (PRIVATE, MIT)      |
-| Default branch  | `main`                                                 |
-| Build package   | `demo/` (Vite + vanilla TS, workspace member)          |
-| Build output    | `demo/dist` (Vite default)                             |
-| Project name    | `mindmaplib-demo`                                      |
+| Item                   | Value                                             |
+| ---------------------- | ------------------------------------------------- |
+| Public URL             | `https://mapdemo.tripleadigital.io`               |
+| Host                   | Cloudflare Pages                                  |
+| Source repo            | `github.com/AndrewArto/mindmaplib` (PRIVATE, MIT) |
+| Default branch         | `main`                                            |
+| Build package          | `demo/` (Vite + vanilla TS, workspace member)     |
+| Build output           | `demo/dist` (Vite default)                        |
+| Suggested project name | `mindmaplib-demo` (decide at creation time)       |
 
 The demo is a standalone Vite app that imports `@mindmaplib/core` (and later
 `@mindmaplib/react`) exactly as an external consumer would. It is NOT published
 to npm. Its only job: prove the library is embeddable, live and interactive.
 
 State as of 2026-07-05: `demo/` does not exist yet (declared in
-`pnpm-workspace.yaml` and `AGENTS.md`). No CF Pages project and no DNS record
+`pnnpm-workspace.yaml` and `AGENTS.md`). No CF Pages project and no DNS record
 for `mapdemo` exist yet. This runbook is ready for when the package is built.
 
 ---
@@ -39,12 +39,12 @@ for `mapdemo` exist yet. This runbook is ready for when the package is built.
 
 Account: **TripleA Digital (Andrey)**.
 
-| Field        | Value                                              |
-| ------------ | -------------------------------------------------- |
-| Account ID   | `ca736f2df3f666a941492679c231c291`                 |
-| Zone         | `tripleadigital.io`                                |
-| Zone ID      | `295caade661965586b4e9c7c6d57844d`                 |
-| API token    | stored in `TOOLS.md` on the Mac mini workspace, key prefix `cfut_` |
+| Field      | Value                                                              |
+| ---------- | ------------------------------------------------------------------ |
+| Account ID | `ca736f2df3f666a941492679c231c291`                                 |
+| Zone       | `tripleadigital.io`                                                |
+| Zone ID    | `295caade661965586b4e9c7c6d57844d`                                 |
+| API token  | stored in `TOOLS.md` on the Mac mini workspace, key prefix `cfut_` |
 
 ### Where the token lives (NEVER commit it)
 
@@ -89,14 +89,11 @@ GitHub CLI: `export HOME=/Users/andery-mini GH_CONFIG_DIR=/Users/andery-mini/.co
 
 ---
 
-## 3. Deployment model — native CF git integration (the only path)
+## 3. Deployment model — recommended: native CF git integration
 
-Cloudflare Pages connected directly to the repo. Push to `main` → CF builds →
-deploys. No manual upload, no CLI upload tooling, no secrets in the repo.
-
-> **No wrangler.** This project never uses `wrangler` for deploys, locally or in
-> CI. Delivery is exclusively git-triggered native CF Pages builds. There is no
-> fallback upload path and there should not be one.
+For a private GitHub repo + pnpm monorepo, the cleanest path is **Cloudflare
+Pages connected directly to the repo**. Push to `main` → CF builds → deploys.
+No secrets stored in the repo, no manual upload.
 
 ### One-time setup (create the project)
 
@@ -107,14 +104,14 @@ Do this once, when `demo/` is scaffolded and `pnpm --filter demo build` produces
    Connect to Git → `AndrewArto/mindmaplib`. Authorise the Cloudflare GitHub app.
 2. **Build configuration:**
 
-   | Setting                | Value                                                  |
-   | ---------------------- | ------------------------------------------------------ |
-   | Production branch      | `main`                                                 |
-   | Framework preset       | `Vite`                                                 |
+   | Setting                | Value                                                        |
+   | ---------------------- | ------------------------------------------------------------ |
+   | Production branch      | `main`                                                       |
+   | Framework preset       | `Vite`                                                       |
    | Build command          | `pnpm install --frozen-lockfile && pnpm --filter demo build` |
-   | Build output directory | `demo/dist`                                            |
-   | Root directory         | `/` (repo root, so pnpm-workspace.yaml is visible)     |
-   | Environment variable   | `NODE_VERSION=22` (matches `.nvmrc`)                   |
+   | Build output directory | `demo/dist`                                                  |
+   | Root directory         | `/` (repo root, so pnpm-workspace.yaml is visible)           |
+   | Environment variable   | `NODE_VERSION=22` (matches `.nvmrc`)                         |
 
    CF Pages reads `.nvmrc` for the Node version if present; setting
    `NODE_VERSION=22` is belt-and-suspenders.
@@ -130,6 +127,9 @@ Do this once, when `demo/` is scaffolded and `pnpm --filter demo build` produces
    CF_TOK=$(grep -o 'cfut_[A-Za-z0-9]*' \
      /Users/andery-mini/.openclaw/workspace/TOOLS.md | head -1)
    ACCT=ca736f2df3f666a941492679c231c291
+   # create project (native git) — easiest via dashboard; API POST to
+   # /accounts/$ACCT/pages/projects with source{type:"github",...} if scripting.
+   # then attach custom domain:
    curl -X POST \
      "https://api.cloudflare.com/client/v4/accounts/$ACCT/pages/projects/mindmaplib-demo/domains" \
      -H "Authorization: Bearer *** \
@@ -148,12 +148,32 @@ curl -s "https://api.cloudflare.com/client/v4/accounts/$ACCT/pages/projects/mind
   | python3 -c "import sys,json; [print(d['id'][:8], d['created_on'], d['latest_stage']['name'], d['latest_stage']['status']) for d in (json.load(sys.stdin).get('result') or [])[:5]]"
 ```
 
-`deployment_trigger.type` is `github_connections` for native git. Use it to
-confirm the active mode.
+`deployment_trigger.type` is `github_connections` for native git (vs `ad_hoc`
+for wrangler upload). Use it to confirm which mode is active.
 
 ---
 
-## 4. Verification after every deploy
+## 4. Fallback: wrangler direct upload
+
+If git integration is blocked or you need a manual deploy from the Mac mini:
+
+```bash
+cd /Users/andery-mini/.openclaw/workspace/mindmaplib
+pnpm install --frozen-lockfile
+pnpm --filter demo build
+# upload demo/dist to the pages project
+CLOUDFLARE_API_TOKEN="$CF_TOK" npx wrangler pages deploy demo/dist \
+  --project-name mindmaplib-demo \
+  --branch main
+```
+
+This is how `tripleadigital.io` itself deploys (`build.sh` → `wrangler pages
+deploy`), so the pattern is proven in this account. Prefer git integration for
+the demo unless there is a reason not to.
+
+---
+
+## 5. Verification after every deploy
 
 CF caches static assets (`max-age=14400, s-maxage=604800`). Always verify with
 a cache-busting URL:
@@ -180,7 +200,7 @@ curl -X POST "https://api.cloudflare.com/client/v4/zones/$ZONE/purge_cache" \
 
 ---
 
-## 5. Development rules (quick reference — copied from mindmaplib)
+## 6. Development rules (quick reference — copied from mindmaplib)
 
 Authoritative: `AGENTS.md` and `docs/runbooks/DEVELOPMENT_PROCESS.md`. The demo
 follows the **same** rules as the rest of the monorepo. Highlights:
@@ -217,7 +237,7 @@ git diff --cached --stat
 
 ---
 
-## 6. Security checklist
+## 7. Security checklist
 
 - **No secrets in commits.** The CF token stays in `TOOLS.md` on the Mac mini.
   `.gitignore` already excludes `.env`, `.env.*`, `node_modules/`, `dist/`,
@@ -231,15 +251,15 @@ git diff --cached --stat
 
 ---
 
-## 7. Troubleshooting
+## 8. Troubleshooting
 
 - **Custom domain stuck "Initializing":** confirm the CNAME exists in the
   `tripleadigital.io` zone (`mapdemo` → `mindmaplib-demo.pages.dev`). Same-zone
-  + same-account usually auto-creates it; if not, add manually.
+  - same-account usually auto-creates it; if not, add manually.
 - **Build fails on CF:** CF must see `pnpm-workspace.yaml` at repo root — keep
   Root directory `/`. Confirm `NODE_VERSION=22`. Run
   `pnpm --filter demo build` locally first to reproduce.
-- **Old version served:** CDN cache — purge (§4), then empty-commit + push to
+- **Old version served:** CDN cache — purge (§5), then empty-commit + push to
   force a fresh build.
 - **Env var not picked up by git deploy:** re-push after adding it via the
   dashboard/API; CF only injects env vars at build time on a fresh deploy.
