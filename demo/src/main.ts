@@ -347,10 +347,12 @@ window.addEventListener('keydown', (e) => {
   const node = doc.nodes[sel]
   if (!node) return
 
+  const layoutMode = state.layoutMode
   switch (e.key) {
     case 'Tab': {
       e.preventDefault()
       editor.addChild(sel)
+      editor.setLayout(layoutMode)
       break
     }
     case 'Enter': {
@@ -360,6 +362,7 @@ window.addEventListener('keydown', (e) => {
       } else {
         editor.addSibling(sel)
       }
+      editor.setLayout(layoutMode)
       break
     }
     case 'Delete':
@@ -367,6 +370,7 @@ window.addEventListener('keydown', (e) => {
       if (node.parentId !== null) {
         e.preventDefault()
         editor.deleteNode(sel)
+        editor.setLayout(layoutMode)
       }
       break
     }
