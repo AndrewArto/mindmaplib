@@ -224,9 +224,26 @@ Badges are styled via CSS classes `mml-outline-badge`, `mml-outline-badge--N`.
 
 Clicking the collapse toggle (▼/▶) calls `editor.toggleCollapsed(nodeId)`.
 
-- Expanded node (`collapsed === false`): shows ▼, children rendered.
-- Collapsed node (`collapsed === true`): shows ▶, children hidden.
+Effective expansion (for display + ARIA + toggle icon) must account for
+both the persisted `collapsed` flag AND the `ephemeralExpand` set:
+
+```typescript
+function isEffectivelyExpanded(
+  node: MindmapNode,
+  ephemeralExpand: Set<string>,
+): boolean {
+  return !node.collapsed || ephemeralExpand.has(node.id)
+}
+```
+
+- Effectively expanded: shows ▼, children rendered, `aria-expanded="true"`.
+- Effectively collapsed: shows ▶, children hidden, `aria-expanded="false"`.
 - Leaf node (no children): no toggle shown.
+
+The toggle icon and `aria-expanded` MUST use `isEffectivelyExpanded`, not
+the raw `collapsed` flag. When a user clicks the toggle on an
+ephemerally-expanded node, the adapter persists the expansion
+(`toggleCollapsed`) to make it explicit, rather than collapsing.
 
 ### Collapse All / Expand All
 
@@ -514,12 +531,10 @@ Instead, auto-expand uses a **view-only expansion set** — a `Set<string>` of
 node IDs tracked in `OutlineView` state (React state, not document state):
 
 ```typescript
-function ensureVisible(
-  doc: MindmapDoc,
-  nodeId: string,
-  ephemeralExpand: Set<string>,
-): Set<string> {
-  const next = new Set(ephemeralExpand)
+function ensureVisible(doc: MindmapDoc, nodeId: string): Set<string> {
+  // Build from scratch — only ancestors of the current selection.
+  // Previous ephemeral expansions are discarded.
+  const next = new Set<string>()
   let parentId = getNode(doc, nodeId)!.parentId
   while (parentId !== null) {
     const parent = getNode(doc, parentId)!
@@ -529,6 +544,10 @@ function ensureVisible(
   return next
 }
 ```
+
+Called on `selectedNodeId` change. Returns a fresh set each time — old
+ephemeral expansions are pruned automatically. The previous set is replaced,
+not merged.
 
 The `OutlineView` passes this set to `buildVisibleList`:
 
@@ -567,7 +586,10 @@ element via a ref.
 ## Search and Filter
 
 Optional feature, enabled via `OutlineView` prop `searchable?: boolean`
-(default: false).
+(default: false). When `searchable` is true, the search input is rendered
+regardless of `showToolbar` — if `showToolbar` is false, only the search input
+appears (no collapse/expand-all buttons). If both are true, the search input
+appears inside the full toolbar.
 
 ### Search Input
 
