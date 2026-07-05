@@ -46,6 +46,20 @@ function extractDocMeta(docJson: string): { title: string; version: number } {
   }
 }
 
+/** Replace the doc.id inside a serialized wrapper with the server-assigned id. */
+function rewriteDocId(docJson: string, newId: string): string {
+  try {
+    const parsed = JSON.parse(docJson) as {
+      schemaVersion: number
+      doc: { id: string; [k: string]: unknown }
+    }
+    parsed.doc.id = newId
+    return JSON.stringify(parsed)
+  } catch {
+    return docJson
+  }
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url)
@@ -85,18 +99,21 @@ export default {
     // POST /api/sessions — create
     if (request.method === 'POST' && !sessionId) {
       const body = (await request.json()) as { doc: string }
-      const { title, version } = extractDocMeta(body.doc)
       const id = crypto.randomUUID()
+      // Rewrite the doc.id to match the server-assigned row id so reloads
+      // and subsequent saves target the correct row.
+      const docJson = rewriteDocId(body.doc, id)
+      const { title, version } = extractDocMeta(docJson)
       const now = new Date().toISOString()
 
       const stmt = env.MINDMAP_DB.prepare(
         'INSERT INTO sessions (id, title, doc_json, version, created, updated) VALUES (?, ?, ?, ?, ?, ?)',
       )
-      await stmt.bind(id, title, body.doc, version, now, now).run()
+      await stmt.bind(id, title, docJson, version, now, now).run()
       return json({ id, title, version })
     }
 
-    // PUT /api/sessions/:id — update
+    // PUT /api/sessions/:id — update (atomic optimistic concurrency)
     if (request.method === 'PUT' && sessionId) {
       const body = (await request.json()) as {
         doc: string
@@ -105,22 +122,34 @@ export default {
       const { title, version } = extractDocMeta(body.doc)
 
       if (body.expectedVersion !== undefined) {
-        const checkStmt = env.MINDMAP_DB.prepare(
-          'SELECT version FROM sessions WHERE id = ?',
+        // Atomic: only update if the version still matches.
+        const stmt = env.MINDMAP_DB.prepare(
+          'UPDATE sessions SET title = ?, doc_json = ?, version = ?, updated = ? WHERE id = ? AND version = ?',
         )
-        const checkResult = await checkStmt.bind(sessionId).all()
-        if (!checkResult.results || checkResult.results.length === 0) {
-          return json({ error: 'not found' }, 404)
-        }
-        const existing = checkResult.results[0] as { version: number }
-        if (existing.version !== body.expectedVersion) {
+        const now = new Date().toISOString()
+        const result = await stmt
+          .bind(title, body.doc, version, now, sessionId, body.expectedVersion)
+          .run()
+        const changes = (result.meta as { changes?: number }).changes ?? 0
+        if (changes === 0) {
+          // Either not found, or version conflict — check which.
+          const checkStmt = env.MINDMAP_DB.prepare(
+            'SELECT version FROM sessions WHERE id = ?',
+          )
+          const checkResult = await checkStmt.bind(sessionId).all()
+          if (!checkResult.results || checkResult.results.length === 0) {
+            return json({ error: 'not found' }, 404)
+          }
+          const existing = checkResult.results[0] as { version: number }
           return json(
             { saved: false, conflict: true, currentVersion: existing.version },
             409,
           )
         }
+        return json({ saved: true, conflict: false, currentVersion: version })
       }
 
+      // No version check — unconditional update.
       const now = new Date().toISOString()
       const stmt = env.MINDMAP_DB.prepare(
         'UPDATE sessions SET title = ?, doc_json = ?, version = ?, updated = ? WHERE id = ?',

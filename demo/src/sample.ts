@@ -4,34 +4,37 @@ import { createDoc, addNode, updateNodeContent } from '@mindmaplib/core'
 import type { MindmapDoc } from '@mindmaplib/core'
 import { textToContent } from './content'
 
+/** Get the id of the most recently added child of parentId. */
+function lastChildId(doc: MindmapDoc, parentId: string): string {
+  const parent = doc.nodes[parentId]
+  if (!parent || parent.childOrder.length === 0) {
+    throw new Error(`lastChildId: no children for ${parentId}`)
+  }
+  return parent.childOrder[parent.childOrder.length - 1]
+}
+
 export function createSampleDoc(): MindmapDoc {
   let doc = createDoc('mindmaplib Demo')
   const root = doc.rootId
 
-  const strategy = addNode(doc, root, { content: textToContent('Strategy') })
-  doc = addNode(strategy, strategy.rootId, {
-    content: textToContent('Market analysis'),
-  })
-  doc = addNode(strategy, doc.rootId, {
-    content: textToContent('Competitive edge'),
-  })
+  // Strategy branch
+  doc = addNode(doc, root, { content: textToContent('Strategy') })
+  const strategy = lastChildId(doc, root)
+  doc = addNode(doc, strategy, { content: textToContent('Market analysis') })
+  doc = addNode(doc, strategy, { content: textToContent('Competitive edge') })
 
-  const product = addNode(doc, root, { content: textToContent('Product') })
-  doc = addNode(product, product.rootId, {
-    content: textToContent('Core engine'),
-  })
-  doc = addNode(product, doc.rootId, {
-    content: textToContent('React adapter'),
-  })
-  doc = addNode(product, doc.rootId, {
-    content: textToContent('Demo app'),
-  })
+  // Product branch
+  doc = addNode(doc, root, { content: textToContent('Product') })
+  const product = lastChildId(doc, root)
+  doc = addNode(doc, product, { content: textToContent('Core engine') })
+  doc = addNode(doc, product, { content: textToContent('React adapter') })
+  doc = addNode(doc, product, { content: textToContent('Demo app') })
 
-  const ops = addNode(doc, root, { content: textToContent('Operations') })
-  doc = addNode(ops, ops.rootId, { content: textToContent('CI / CD') })
-  doc = addNode(ops, doc.rootId, {
-    content: textToContent('Deploy to CF Pages'),
-  })
+  // Operations branch
+  doc = addNode(doc, root, { content: textToContent('Operations') })
+  const ops = lastChildId(doc, root)
+  doc = addNode(doc, ops, { content: textToContent('CI / CD') })
+  doc = addNode(doc, ops, { content: textToContent('Deploy to CF Pages') })
 
   // Update root content
   doc = updateNodeContent(doc, root, textToContent('mindmaplib'))
