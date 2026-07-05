@@ -52,7 +52,7 @@ pnpm lint                 # eslint (all packages)
 pnpm typecheck            # tsc --noEmit (all packages)
 pnpm test                 # vitest run (all packages)
 pnpm check-boundaries     # dependency-cruiser: core has no react/demo imports
-pnpm ci                   # full local gate: format + lint + typecheck + test + boundaries
+pnpm run ci                   # full local gate: format + lint + typecheck + test + boundaries
 ```
 
 Per-package:

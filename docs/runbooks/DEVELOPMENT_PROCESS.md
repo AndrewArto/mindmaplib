@@ -126,7 +126,7 @@ pnpm check-boundaries
 Or the full gate:
 
 ```bash
-pnpm ci
+pnpm run ci
 ```
 
 Before committing, always run:
@@ -234,7 +234,7 @@ Never run `npm publish` manually. Never publish from a feature branch.
 | Typecheck  | `pnpm typecheck`        | tsc --noEmit, strict, all packages |
 | Unit tests | `pnpm test`             | Vitest, all packages               |
 | Boundaries | `pnpm check-boundaries` | core has no react/demo imports     |
-| Full gate  | `pnpm ci`               | All of the above in sequence       |
+| Full gate  | `pnpm run ci`           | All of the above in sequence       |
 
 Per-package test:
 
