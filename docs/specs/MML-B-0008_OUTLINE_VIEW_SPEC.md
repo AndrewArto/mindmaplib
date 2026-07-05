@@ -218,13 +218,27 @@ moves to the new item via a ref.
 | End                | Move focus to last visible item (depth-first)                                              |
 | Enter              | Select node in canvas + transfer focus to canvas                                           |
 | Space              | Select node in canvas (keep focus in outline)                                              |
-| Delete / Backspace | Delete node (with confirm if has children)                                                 |
+| Delete / Backspace | Delete node (with confirm if has children). Root is immutable — no-op.                     |
 | F2                 | Select node + enter edit mode in canvas (transfers focus)                                  |
 | Escape             | Deselect (clears selection)                                                                |
+
+Root deletion: core throws `ROOT_IMMUTABLE` when `deleteNode(rootId)` is
+called. The outline keyboard handler MUST guard against this: if the focused
+node is the root, Delete/Backspace is a no-op (no confirm dialog, no error).
 
 Note: Tab/Shift+Tab (create child/sibling) are canvas-only shortcuts. In the
 outline, Tab follows browser default (move to next focusable element outside
 the outline).
+
+### Search-Aware Navigation
+
+When search is active (filter is applied), the navigation algorithms
+(`getNextVisibleItem`, `getPrevVisibleItem`) MUST operate on the filtered
+visible item list, not the raw tree. A "visible" item during search is one
+that matches the query OR is an ancestor of a matching item. Collapsed nodes
+that contain matches are treated as expanded for navigation purposes (the
+filter overrides the `collapsed` flag for visibility). This prevents focusing
+hidden rows or skipping rendered matches.
 
 ### Navigation Algorithm
 
@@ -317,7 +331,12 @@ function handleDrop(
     editor.moveNode(draggedId, targetId, null) // first child
   } else {
     const target = getNode(doc, targetId)!
-    const parentId = target.parentId!
+    // Root has no parent — coerce sibling drop to 'inside'.
+    if (target.parentId === null) {
+      editor.moveNode(draggedId, targetId, null)
+      return
+    }
+    const parentId = target.parentId
     const insertAfter =
       zone === 'before' ? getPrevSibling(doc, targetId) : targetId
     editor.moveNode(draggedId, parentId, insertAfter)
@@ -383,25 +402,33 @@ owns the data; both are projections of `EditorState`.
 When the selected node changes (from canvas), and the selected node is hidden
 because an ancestor is collapsed, the outline auto-expends the ancestors:
 
+(replaced by editor-based version above)
+
+This is called by the adapter when `selectedNodeId` changes and the selected
+node is not visible in the outline. The auto-expand MUST go through the editor
+as a single undoable transaction, not by replacing the doc directly:
+
 ```typescript
-function ensureVisible(doc: MindmapDoc, nodeId: string): MindmapDoc {
-  // Walk up from nodeId to root. If any ancestor is collapsed, expand it.
-  let result = doc
+function ensureVisible(editor: MindmapEditor, nodeId: string): void {
+  const doc = editor.getDoc()
+  const ops: TransactionOp[] = []
   let parentId = getNode(doc, nodeId)!.parentId
   while (parentId !== null) {
-    const parent = getNode(result, parentId)!
+    const parent = getNode(doc, parentId)!
     if (parent.collapsed) {
-      result = toggleNodeCollapsed(result, parentId)
+      ops.push(createToggleCollapsedOp(parentId))
     }
     parentId = parent.parentId
   }
-  return result
+  if (ops.length > 0) {
+    editor.apply(buildTransaction(doc, ops))
+  }
 }
 ```
 
-This is called by the adapter when `selectedNodeId` changes and the selected
-node is not visible in the outline. It produces a document mutation
-(expanding ancestors), which goes through the transaction layer.
+Building all toggle ops into one transaction ensures the auto-expand is a
+single undo step and the editor's live state is updated through the public
+API.
 
 ### Scroll to Selected
 
