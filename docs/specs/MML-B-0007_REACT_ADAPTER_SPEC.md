@@ -99,8 +99,8 @@ All verified against npm registry on 2026-07-05.
 {
   "peerDependencies": {
     "@mindmaplib/core": "workspace:*",
-    "react": ">=18.3 || >=19",
-    "react-dom": ">=18.3 || >=19"
+    "react": "^18.3.0 || ^19.0.0",
+    "react-dom": "^18.3.0 || ^19.0.0"
   }
 }
 ```
@@ -318,8 +318,12 @@ fit-to-screen viewport itself:
 
 1. Read the container's pixel dimensions (`containerWidth`,
    `containerHeight`) from the DOM ref.
-2. Query all positioned nodes from `editor.getDoc()` to find bounding box
-   (`minX, minY, maxX, maxY` in document coordinates).
+2. Query all positioned nodes from `editor.getDoc()` to find bounding box.
+   For each positioned node, use its measured dimensions (from NodeMeasures)
+   or the default size (120x40) to compute the full extent:
+   `minX = min(position.x)`, `maxX = max(position.x + nodeWidth)`,
+   `minY = min(position.y)`, `maxY = max(position.y + nodeHeight)`.
+   Using anchor points alone would crop wide/tall node bodies.
 3. Compute zoom: `min(containerW / (bboxW + padding), containerH / (bboxH +
 padding), MAX_ZOOM)`.
 4. Compute pan to center the bounding box: `x = (containerW - bboxW * zoom) /
@@ -363,6 +367,7 @@ coordinates via absolute positioning inside the transformed container:
     'mml-node--selected': isSelected,
     'mml-node--editing': isEditing,
   })}
+  data-node-id={node.id}
   style={{
     position: 'absolute',
     left: `${node.position?.x ?? 0}px`,
@@ -974,8 +979,8 @@ packages/react/
   "files": ["dist", "README.md", "LICENSE"],
   "peerDependencies": {
     "@mindmaplib/core": "workspace:*",
-    "react": ">=18.3 || >=19",
-    "react-dom": ">=18.3 || >=19"
+    "react": "^18.3.0 || ^19.0.0",
+    "react-dom": "^18.3.0 || ^19.0.0"
   },
   "dependencies": {
     "@tiptap/core": "^3.0",
