@@ -232,12 +232,13 @@ export class MindmapEditor {
   // --- Layout ----------------------------------------------------------
 
   setLayout(mode: LayoutMode): void {
+    this.layoutMode = mode
     const ops = computeLayoutOps(this.doc, mode)
     if (ops.length > 0) {
       this.apply(buildTransaction(this.doc, ops))
+    } else {
+      this.notify()
     }
-    this.layoutMode = mode
-    this.notify()
   }
 
   // --- Undo / redo -----------------------------------------------------
@@ -333,6 +334,19 @@ export class MindmapEditor {
   }
 
   private notify(): void {
+    // Clear stale selection/editing references before notifying subscribers.
+    if (
+      this.selectedNodeId !== null &&
+      !Object.hasOwn(this.doc.nodes, this.selectedNodeId)
+    ) {
+      this.selectedNodeId = null
+    }
+    if (
+      this.editingNodeId !== null &&
+      !Object.hasOwn(this.doc.nodes, this.editingNodeId)
+    ) {
+      this.editingNodeId = null
+    }
     const state = this.getState()
     for (const listener of this.listeners) {
       listener(state)

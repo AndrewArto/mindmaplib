@@ -108,7 +108,8 @@ export function buildTransaction(
 // ---------------------------------------------------------------------------
 
 function cloneDoc(doc: MindmapDoc): MindmapDoc {
-  return { ...doc, nodes: { ...doc.nodes } }
+  const nodes = Object.assign(Object.create(null), doc.nodes)
+  return { ...doc, nodes }
 }
 
 function replaceNode(

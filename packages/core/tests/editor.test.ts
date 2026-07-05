@@ -75,6 +75,33 @@ describe('MindmapEditor mutations', () => {
     expect(getNode(editor.getDoc(), a1)!.parentId).toBe(root)
   })
 
+  it('clears selection when selected node is deleted (P2 r5)', () => {
+    const { editor, a } = editorWithTree()
+    editor.select(a)
+    expect(editor.getState().selectedNodeId).toBe(a)
+    editor.deleteNode(a)
+    expect(editor.getState().selectedNodeId).toBeNull()
+  })
+
+  it('clears editing when edited node is deleted (P2 r5)', () => {
+    const { editor, a } = editorWithTree()
+    editor.startEditing(a)
+    expect(editor.getState().editingNodeId).toBe(a)
+    editor.deleteNode(a)
+    expect(editor.getState().editingNodeId).toBeNull()
+  })
+
+  it('setLayout sets layoutMode before notifying (P3 r5)', () => {
+    const editor = new MindmapEditor(createDoc('L'))
+    const root = editor.getDoc().rootId
+    editor.addChild(root)
+    const modes: string[] = []
+    editor.subscribe((state) => modes.push(state.layoutMode))
+    editor.setLayout('tree-vertical')
+    // every notification should have seen the new mode
+    expect(modes.every((m) => m === 'tree-vertical')).toBe(true)
+  })
+
   it('promoteNode of a root child is a no-op', () => {
     const editor = new MindmapEditor(createDoc('M'))
     const root = editor.getDoc().rootId

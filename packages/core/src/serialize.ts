@@ -93,7 +93,7 @@ export function deserialize(json: string): MindmapDoc {
   const d = rawDoc as Record<string, unknown>
 
   const rawNodes = d.nodes
-  const nodes: Record<string, MindmapNode> = {}
+  const nodes: Record<string, MindmapNode> = Object.create(null)
   if (rawNodes && typeof rawNodes === 'object') {
     for (const [id, raw] of Object.entries(
       rawNodes as Record<string, unknown>,
