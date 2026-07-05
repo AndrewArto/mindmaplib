@@ -4,7 +4,7 @@ Status: draft.
 Date: 2026-07-05.
 Owner: Andrew Arto.
 Spec-ID: MML-B-0001.
-Spec-Version: 0.3.0+backlog.0001.
+Spec-Version: 0.3.1+backlog.0001.
 Backlog lane: backlog.
 Depends-on: none.
 Supersedes: none.
@@ -172,7 +172,7 @@ interface ListBlock {
 
 interface ListItemBlock {
   type: 'listItem'
-  content: TextBlock[]
+  content: Array<TextBlock | ListBlock>  // paragraphs + optional nested lists
 }
 
 type NodeContentBlock = TextBlock | ListBlock
@@ -189,7 +189,8 @@ defines its own TypeScript types for it (not importing TipTap types into core)
 so that `@mindmaplib/core` remains framework-agnostic with zero TipTap
 dependency. List nodes use the standard ProseMirror nesting: `bulletList`
 and `orderedList` contain `listItem` children, each containing `paragraph`
-blocks.
+blocks and optionally nested `ListBlock` children (sub-lists). This matches
+TipTap v3's `listItem` content schema (`paragraph block*`).
 
 The React adapter is responsible for:
 
@@ -810,3 +811,5 @@ updates over WebSocket. The core engine should not need rewriting.
   (TextBlock/ListBlock union), fixed viewport transform math (pan in screen
   px, transform-origin: 0 0), removed schemaVersion from MindmapDoc (single
   source of truth in SerializedDoc wrapper).
+- 0.3.1+backlog.0001: Codex review round 2 confirmation — ListItemBlock content
+  made recursive (Array<TextBlock | ListBlock>) to support nested sub-lists.
