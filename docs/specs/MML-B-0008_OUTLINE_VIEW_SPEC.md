@@ -114,10 +114,16 @@ state change.
 4. Each `OutlineItem` reads its children from `doc` via `getChildren(doc,
 node.id)`, renders child items recursively.
 5. Collapsed nodes do not render their children (children are hidden).
-6. Each `OutlineItem` is wrapped in `React.memo` with a comparator checking
-   `node` reference, `isSelected`, `isEditing`, `isExpanded`, and `doc`
-   reference. Since `doc` uses structural sharing, unchanged subtrees keep
-   their references and skip re-render.
+6. Each `OutlineItem` is wrapped in `React.memo` with a comparator
+   checking ONLY stable per-node props: `node` reference identity
+   (structural sharing means unchanged nodes keep their reference),
+   `isSelected`, `isEditing`, and `isExpanded` (derived from
+   `node.collapsed`). The comparator MUST NOT include the `doc`
+   reference — `doc` is replaced as a whole on every mutation, so
+   including it would invalidate every item on any change, defeating
+   structural sharing. Children data is read from `doc` during render,
+   but the memo boundary is the `node` reference, which only changes
+   when that specific node is mutated.
 
 ### Text Excerpt
 
@@ -171,11 +177,31 @@ Clicking the collapse toggle (▼/▶) calls `editor.toggleCollapsed(nodeId)`.
 
 The `OutlineToolbar` (if `showToolbar` prop is true) provides:
 
-- **Collapse All**: collapses every node in the tree (sets `collapsed = true`
-  on all non-leaf nodes). Implemented as a single transaction with multiple
-  `toggleCollapsed` ops.
-- **Expand All**: expands every node (`collapsed = false` on all). Single
-  transaction.
+- **Collapse All**: collapses every non-leaf node. Only nodes where
+  `collapsed === false` are toggled — idempotent. Single transaction.
+- **Expand All**: expands every node. Only nodes where `collapsed === true`
+  are toggled — idempotent. Single transaction.
+
+```typescript
+function collapseAll(editor: MindmapEditor): void {
+  const doc = editor.getDoc()
+  const ops = Object.values(doc.nodes)
+    .filter((n) => !n.collapsed && n.childOrder.length > 0)
+    .map((n) => createToggleCollapsedOp(n.id))
+  if (ops.length > 0) editor.apply(buildTransaction(doc, ops))
+}
+
+function expandAll(editor: MindmapEditor): void {
+  const doc = editor.getDoc()
+  const ops = Object.values(doc.nodes)
+    .filter((n) => n.collapsed)
+    .map((n) => createToggleCollapsedOp(n.id))
+  if (ops.length > 0) editor.apply(buildTransaction(doc, ops))
+}
+```
+
+Filtering by current state ensures idempotency: Collapse All only toggles
+expanded nodes, Expand All only toggles collapsed nodes.
 
 These operations are undoable (they go through the transaction layer).
 
@@ -552,13 +578,16 @@ interface OutlineViewProps {
   showToolbar?: boolean // default: false
   searchable?: boolean // default: false
   selectToCenter?: boolean // default: false
+  confirmDelete?: (node: MindmapNode) => Promise<boolean> | boolean // from MindmapProps
+  onNodeDoubleClick?: (nodeId: string, event: React.MouseEvent) => void // from MindmapProps
   className?: string
 }
 ```
 
 `OutlineView` receives these from the parent `Mindmap` component (MML-B-0007).
-It is not intended to be used standalone — it depends on the editor binding
-from the adapter.
+`confirmDelete` and `onNodeDoubleClick` are forwarded from `MindmapProps` so
+outline behavior matches adapter-level config. When `confirmDelete` is
+undefined, falls back to `window.confirm`. Not intended for standalone use.
 
 ## Implementation Outline
 
