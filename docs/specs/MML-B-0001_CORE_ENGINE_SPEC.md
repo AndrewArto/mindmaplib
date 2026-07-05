@@ -59,19 +59,19 @@ Verified 2026-07-05 against npm registry. All runtime dependencies are MIT or
 MIT-compatible. Versions are minimum floors, not exact pins. The project will
 track latest stable within each major.
 
-| Layer | Package | Min Version | License | Rationale |
-|-------|---------|-------------|---------|-----------|
-| Language | TypeScript | 5.x+ (strict) | Apache-2.0 | Type safety, IDE support |
-| Rich text | @tiptap/core, @tiptap/pm, @tiptap/starter-kit | ^3.0 | MIT | Headless, framework-agnostic, MIT core |
-| Layout math | d3-hierarchy | ^3.1 | ISC | Pure layout algorithms, no DOM, MIT-compatible |
-| Framework adapter | React | ^18.3 \|\| ^19 | MIT | First integration target is a React app |
-| Monorepo | pnpm workspaces | ^9 | MIT | Strict dependency boundaries, fast |
-| Versioning | @changesets/cli | ^2 | MIT | OSS monorepo standard, npm publish automation |
-| Boundaries | dependency-cruiser | ^18 | MIT | CI-enforced package isolation |
-| Testing | vitest | ^2 | MIT | Fast, ESM-native, monorepo-friendly |
-| Library bundling | tsup | ^8 | MIT | Zero-config TS library builds |
-| Demo bundling | vite | ^6 | MIT | Fast dev server, standard for React demos |
-| HTML sanitizer | DOMPurify | ^3 | MPL-2.0/Apache-2.0 | Sanitize generateHTML output in react adapter |
+| Layer             | Package                                       | Min Version    | License            | Rationale                                      |
+| ----------------- | --------------------------------------------- | -------------- | ------------------ | ---------------------------------------------- |
+| Language          | TypeScript                                    | 5.x+ (strict)  | Apache-2.0         | Type safety, IDE support                       |
+| Rich text         | @tiptap/core, @tiptap/pm, @tiptap/starter-kit | ^3.0           | MIT                | Headless, framework-agnostic, MIT core         |
+| Layout math       | d3-hierarchy                                  | ^3.1           | ISC                | Pure layout algorithms, no DOM, MIT-compatible |
+| Framework adapter | React                                         | ^18.3 \|\| ^19 | MIT                | First integration target is a React app        |
+| Monorepo          | pnpm workspaces                               | ^9             | MIT                | Strict dependency boundaries, fast             |
+| Versioning        | @changesets/cli                               | ^2             | MIT                | OSS monorepo standard, npm publish automation  |
+| Boundaries        | dependency-cruiser                            | ^18            | MIT                | CI-enforced package isolation                  |
+| Testing           | vitest                                        | ^2             | MIT                | Fast, ESM-native, monorepo-friendly            |
+| Library bundling  | tsup                                          | ^8             | MIT                | Zero-config TS library builds                  |
+| Demo bundling     | vite                                          | ^6             | MIT                | Fast dev server, standard for React demos      |
+| HTML sanitizer    | DOMPurify                                     | ^3             | MPL-2.0/Apache-2.0 | Sanitize generateHTML output in react adapter  |
 
 ### License Verification Notes
 
@@ -103,22 +103,22 @@ interface MindmapDoc {
   id: string
   rootId: string
   nodes: Record<string, MindmapNode>
-  version: number          // document revision, incremented on every transaction
+  version: number // document revision, incremented on every transaction
   meta: {
     title: string
-    created: string  // ISO 8601
-    updated: string  // ISO 8601
+    created: string // ISO 8601
+    updated: string // ISO 8601
   }
 }
 
 interface MindmapNode {
   id: string
-  parentId: string | null  // null only for root
-  position: { x: number; y: number } | null  // computed or explicit coordinates
-  manualPosition: boolean  // true = user-set, auto-layout must not override
-  content: NodeContent     // rich text (see Node Content section)
-  collapsed: boolean       // collapsed in outline and canvas
-  childOrder: string[]     // ordered list of child IDs; [] = leaf
+  parentId: string | null // null only for root
+  position: { x: number; y: number } | null // computed or explicit coordinates
+  manualPosition: boolean // true = user-set, auto-layout must not override
+  content: NodeContent // rich text (see Node Content section)
+  collapsed: boolean // collapsed in outline and canvas
+  childOrder: string[] // ordered list of child IDs; [] = leaf
 }
 ```
 
@@ -182,7 +182,7 @@ interface ListBlock {
 
 interface ListItemBlock {
   type: 'listItem'
-  content: Array<TextBlock | ListBlock>  // paragraphs + optional nested lists
+  content: Array<TextBlock | ListBlock> // paragraphs + optional nested lists
 }
 
 type NodeContentBlock = TextBlock | ListBlock
@@ -269,7 +269,7 @@ checked by `validateDoc(doc)` which runs:
 - Not in production hot paths (use dev-mode only).
 
 ```typescript
-function validateDoc(doc: MindmapDoc): void  // throws MindmapError on violation
+function validateDoc(doc: MindmapDoc): void // throws MindmapError on violation
 ```
 
 Invariants:
@@ -298,12 +298,27 @@ keeping a single source of truth for behavior.
 ```typescript
 // Serializable operation: plain JSON, no functions
 type TransactionOp =
-  | { type: 'addNode'; parentId: string; nodeId: string; insertAfter?: string | null; content?: NodeContent }
+  | {
+      type: 'addNode'
+      parentId: string
+      nodeId: string
+      insertAfter?: string | null
+      content?: NodeContent
+    }
   | { type: 'deleteNode'; nodeId: string }
-  | { type: 'moveNode'; nodeId: string; newParentId: string; insertAfter?: string | null }
+  | {
+      type: 'moveNode'
+      nodeId: string
+      newParentId: string
+      insertAfter?: string | null
+    }
   | { type: 'updateContent'; nodeId: string; content: NodeContent }
-  | { type: 'setPosition'; nodeId: string; position: { x: number; y: number } }           // user drag: sets manualPosition=true
-  | { type: 'layoutPosition'; nodeId: string; position: { x: number; y: number } }         // auto-layout: keeps manualPosition=false
+  | { type: 'setPosition'; nodeId: string; position: { x: number; y: number } } // user drag: sets manualPosition=true
+  | {
+      type: 'layoutPosition'
+      nodeId: string
+      position: { x: number; y: number }
+    } // auto-layout: keeps manualPosition=false
   | { type: 'resetManualPosition'; nodeId: string }
   | { type: 'toggleCollapsed'; nodeId: string }
 
@@ -314,11 +329,11 @@ function applyOp(doc: MindmapDoc, op: TransactionOp): MindmapDoc
 // baseVersion enables optimistic concurrency; the editor may reject
 // transactions whose baseVersion does not match the current doc.version.
 interface Transaction {
-  id: string                  // unique transaction ID (uuid or monotonic)
-  baseVersion: number         // doc.version this transaction was built against
-  ops: TransactionOp[]        // one or more ops applied in order
-  timestamp: string           // ISO 8601
-  actorId?: string            // reserved for future collaboration
+  id: string // unique transaction ID (uuid or monotonic)
+  baseVersion: number // doc.version this transaction was built against
+  ops: TransactionOp[] // one or more ops applied in order
+  timestamp: string // ISO 8601
+  actorId?: string // reserved for future collaboration
 }
 
 function applyTransaction(doc: MindmapDoc, tx: Transaction): MindmapDoc
@@ -330,12 +345,29 @@ function applyTransaction(doc: MindmapDoc, tx: Transaction): MindmapDoc
 Built-in operation factories (construct `TransactionOp` values):
 
 ```typescript
-function createAddNodeOp(parentId: string, nodeId: string, opts?: { insertAfter?: string | null; content?: NodeContent }): TransactionOp
+function createAddNodeOp(
+  parentId: string,
+  nodeId: string,
+  opts?: { insertAfter?: string | null; content?: NodeContent },
+): TransactionOp
 function createDeleteNodeOp(nodeId: string): TransactionOp
-function createMoveNodeOp(nodeId: string, newParentId: string, insertAfter?: string | null): TransactionOp
-function createUpdateContentOp(nodeId: string, content: NodeContent): TransactionOp
-function createSetPositionOp(nodeId: string, position: { x: number; y: number }): TransactionOp
-function createLayoutPositionOp(nodeId: string, position: { x: number; y: number }): TransactionOp
+function createMoveNodeOp(
+  nodeId: string,
+  newParentId: string,
+  insertAfter?: string | null,
+): TransactionOp
+function createUpdateContentOp(
+  nodeId: string,
+  content: NodeContent,
+): TransactionOp
+function createSetPositionOp(
+  nodeId: string,
+  position: { x: number; y: number },
+): TransactionOp
+function createLayoutPositionOp(
+  nodeId: string,
+  position: { x: number; y: number },
+): TransactionOp
 function createResetManualPositionOp(nodeId: string): TransactionOp
 function createToggleCollapsedOp(nodeId: string): TransactionOp
 ```
@@ -343,7 +375,11 @@ function createToggleCollapsedOp(nodeId: string): TransactionOp
 Built-in transaction builders (construct full `Transaction` objects):
 
 ```typescript
-function buildTransaction(doc: MindmapDoc, ops: TransactionOp | TransactionOp[], opts?: { actorId?: string }): Transaction
+function buildTransaction(
+  doc: MindmapDoc,
+  ops: TransactionOp | TransactionOp[],
+  opts?: { actorId?: string },
+): Transaction
 // Creates a Transaction with:
 //   id: generated uuid
 //   baseVersion: doc.version (captured at build time)
@@ -379,11 +415,28 @@ so host sync (save with `expectedVersion`) works predictably.
 Pure tree operations (convenience, internally create and apply transactions):
 
 ```typescript
-function addNode(doc: MindmapDoc, parentId: string, opts?: { insertAfter?: string | null; content?: NodeContent }): MindmapDoc
+function addNode(
+  doc: MindmapDoc,
+  parentId: string,
+  opts?: { insertAfter?: string | null; content?: NodeContent },
+): MindmapDoc
 function deleteNode(doc: MindmapDoc, nodeId: string): MindmapDoc
-function moveNode(doc: MindmapDoc, nodeId: string, newParentId: string, insertAfter?: string | null): MindmapDoc
-function updateNodeContent(doc: MindmapDoc, nodeId: string, content: NodeContent): MindmapDoc
-function setNodePosition(doc: MindmapDoc, nodeId: string, position: { x: number; y: number }): MindmapDoc
+function moveNode(
+  doc: MindmapDoc,
+  nodeId: string,
+  newParentId: string,
+  insertAfter?: string | null,
+): MindmapDoc
+function updateNodeContent(
+  doc: MindmapDoc,
+  nodeId: string,
+  content: NodeContent,
+): MindmapDoc
+function setNodePosition(
+  doc: MindmapDoc,
+  nodeId: string,
+  position: { x: number; y: number },
+): MindmapDoc
 function resetManualPosition(doc: MindmapDoc, nodeId: string): MindmapDoc
 function toggleNodeCollapsed(doc: MindmapDoc, nodeId: string): MindmapDoc
 ```
@@ -607,8 +660,8 @@ construct transaction objects for common operations.
 
 ```typescript
 interface SerializedDoc {
-  schemaVersion: number  // currently 1
-  doc: MindmapDoc        // the full document
+  schemaVersion: number // currently 1
+  doc: MindmapDoc // the full document
 }
 ```
 
@@ -719,21 +772,21 @@ view owns data; both are projections of `EditorState`.
 
 ## Keyboard Navigation
 
-| Key | Action |
-|-----|--------|
-| Tab | Create child node of selected, enter edit mode |
-| Shift+Tab | Promote node (move to parent's sibling level) |
-| Enter | Create sibling node after current, enter edit mode |
-| ArrowUp / ArrowDown | Navigate between siblings (per childOrder) |
-| ArrowLeft | Navigate to parent |
-| ArrowRight | Navigate to first child |
-| Delete / Backspace | Delete node (with subtree). If node has children, confirm first. |
-| Space / F2 | Enter edit mode for selected node |
-| Escape | Exit edit mode / deselect |
-| Cmd/Ctrl+Z | Undo |
-| Cmd/Ctrl+Shift+Z | Redo |
-| Cmd/Ctrl+Plus / Minus | Zoom in / out |
-| Cmd/Ctrl+0 | Fit to screen |
+| Key                   | Action                                                           |
+| --------------------- | ---------------------------------------------------------------- |
+| Tab                   | Create child node of selected, enter edit mode                   |
+| Shift+Tab             | Promote node (move to parent's sibling level)                    |
+| Enter                 | Create sibling node after current, enter edit mode               |
+| ArrowUp / ArrowDown   | Navigate between siblings (per childOrder)                       |
+| ArrowLeft             | Navigate to parent                                               |
+| ArrowRight            | Navigate to first child                                          |
+| Delete / Backspace    | Delete node (with subtree). If node has children, confirm first. |
+| Space / F2            | Enter edit mode for selected node                                |
+| Escape                | Exit edit mode / deselect                                        |
+| Cmd/Ctrl+Z            | Undo                                                             |
+| Cmd/Ctrl+Shift+Z      | Redo                                                             |
+| Cmd/Ctrl+Plus / Minus | Zoom in / out                                                    |
+| Cmd/Ctrl+0            | Fit to screen                                                    |
 
 When a TipTap editor is active (editingNodeId is set), keyboard shortcuts are
 handled by TipTap. The mindmap keyboard handler is suspended during editing.
