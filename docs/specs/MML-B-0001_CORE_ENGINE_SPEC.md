@@ -4,7 +4,7 @@ Status: accepted.
 Date: 2026-07-05.
 Owner: Andrew Arto.
 Spec-ID: MML-B-0001.
-Spec-Version: 0.4.2+backlog.0001.
+Spec-Version: 0.5.0+backlog.0001.
 Backlog lane: backlog.
 Depends-on: none.
 Supersedes: none.
@@ -235,8 +235,10 @@ MUST sanitize generated HTML before DOM insertion using DOMPurify with an
 allowlist:
 
 - Allowed tags: `p, h1, h2, h3, ul, ol, li, pre, code, strong, em, a, br`.
-- `a` tag: `href` attribute only, scheme restricted to `http:`, `https:`,
-  `mailto:`. `target="_blank"` allowed. `rel="noopener noreferrer"` enforced.
+- `a` tag: allowed attributes are `href`, `target`, `rel`.
+  - `href`: scheme restricted to `http:`, `https:`, `mailto:`.
+  - `target`: only `_blank` permitted (other values stripped).
+  - `rel`: `noopener noreferrer` enforced when `target="_blank"`.
 - All other attributes stripped. `style`, `class`, `id`, event handlers
   (`onerror`, `onclick`, etc.), `javascript:` URLs, and `data:` URLs are
   forbidden.
@@ -386,11 +388,6 @@ function resetManualPosition(doc: MindmapDoc, nodeId: string): MindmapDoc
 function toggleNodeCollapsed(doc: MindmapDoc, nodeId: string): MindmapDoc
 ```
 
-The undo stack stores prior `MindmapDoc` states (not transaction inverses).
-Ring buffer, default 100 entries. Applying a transaction: push current doc
-onto undo stack, clear redo stack, set new doc. Undo: push current to redo,
-pop undo. Redo: push current to undo, pop redo.
-
 ### Validation and Error Behavior
 
 All tree operations validate inputs and throw `MindmapError` on invalid state:
@@ -418,7 +415,7 @@ class MindmapError extends Error {
     message: string,
     readonly code: 'NODE_NOT_FOUND' | 'ROOT_IMMUTABLE' | 'CYCLE_DETECTED' |
                    'INVALID_CONTENT' | 'INVALID_POSITION' | 'SCHEMA_MISMATCH' |
-                   'MALFORMED_JSON',
+                   'MALFORMED_JSON' | 'DOC_INVARIANT_VIOLATION' | 'INVALID_TRANSACTION',
     readonly nodeId?: string,
   )
 }
@@ -474,20 +471,16 @@ interface LayoutOptions {
   spacingY?: number                     // vertical gap (default: 20)
 }
 
-function computeLayout(doc: MindmapDoc, mode: LayoutMode, options?: LayoutOptions): MindmapDoc
-// Pure function: returns a new doc with recomputed positions.
-// Does NOT mutate the input doc. The caller (MindmapEditor) wraps the
-// result into a transaction internally:
-//   1. Call computeLayout(oldDoc, mode, opts) -> newDoc
-//   2. Extract position changes as layoutPosition ops
-//      for each affected node (manualPosition === false nodes only)
-//   3. Build a Transaction with those ops
-//   4. Apply via applyTransaction -> new doc with incremented version
-// This ensures layout changes go through the transaction layer and
-// increment doc.version for host sync.
+function computeLayoutOps(doc: MindmapDoc, mode: LayoutMode, options?: LayoutOptions): TransactionOp[]
+// Pure function: returns an array of layoutPosition ops (one per
+// auto-positioned node). Does NOT mutate the input doc, does NOT return
+// a MindmapDoc. The caller wraps the ops into a transaction:
+//   const ops = computeLayoutOps(doc, 'tree-horizontal', opts)
+//   const tx = buildTransaction(doc, ops)
+//   editor.apply(tx)  // increments doc.version via transaction layer
 // Builds a transient d3-hierarchy tree using node measures (or defaults).
-// Overwrites position for nodes where manualPosition === false.
-// Preserves position for nodes where manualPosition === true.
+// Produces layoutPosition ops for nodes where manualPosition === false.
+// Omits nodes where manualPosition === true (their positions are preserved).
 // Children of a manual-positioned node are laid out relative to that node
 // (manual node acts as a fixed anchor for its auto-positioned subtree).
 // Collapsed nodes are treated as leaves: their descendants are not
@@ -536,7 +529,7 @@ class MindmapEditor {
   fitToScreen(): void  // computes viewport to fit all nodes
 
   // Layout
-  setLayout(mode: LayoutMode): void  // runs computeLayout, wraps result in transaction
+  setLayout(mode: LayoutMode): void  // runs computeLayoutOps, wraps ops in transaction, applies
 
   // Undo/redo
   undo(): void
@@ -565,9 +558,12 @@ interface MindmapStore {
 
 interface SaveResult {
   saved: boolean
-  conflict: boolean        // true if expectedVersion mismatch
+  conflict: boolean        // true if expectedVersion mismatch (not thrown)
   currentVersion?: number  // server-side version after save (if saved)
 }
+// When conflict === true, the host should reload the document (store.load)
+// and let the user resolve or discard local changes. The editor's isDirty
+// flag remains true until a successful save or explicit discard.
 
 interface MindmapDocMeta {
   id: string
@@ -577,11 +573,13 @@ interface MindmapDocMeta {
 }
 
 // Typed store errors
+// VERSION_CONFLICT is not thrown by save(); it is returned as SaveResult.conflict=true.
+// StoreError is for infrastructure failures (permissions, quota, corruption).
 class StoreError extends Error {
   constructor(
     message: string,
-    readonly code: 'NOT_FOUND' | 'VERSION_CONFLICT' | 'PERMISSION_DENIED' |
-                   'QUOTA_EXCEEDED' | 'CORRUPT_DOCUMENT',
+    readonly code: 'NOT_FOUND' | 'PERMISSION_DENIED' | 'QUOTA_EXCEEDED' |
+                   'CORRUPT_DOCUMENT',
   )
 }
 
@@ -767,7 +765,7 @@ default spacing).
 ### Auto-Layout Modes
 
 When the user selects an auto-layout mode (tree-horizontal, tree-vertical,
-radial), the library calls `computeLayout(doc, mode)` which uses d3-hierarchy
+radial), the library calls `computeLayoutOps(doc, mode)` which uses d3-hierarchy
 to calculate positions for all nodes where `manualPosition === false`:
 
 - tree-horizontal: root on left, children branch right (tidy tree).
@@ -789,7 +787,7 @@ mindmaplib/
         document.ts       ← createDoc, tree operations, queries
         transactions.ts   ← Transaction, TransactionOp, factories
         editor.ts         ← MindmapEditor, EditorState
-        layout.ts         ← computeLayout (delegates to d3-hierarchy)
+        layout.ts         ← computeLayoutOps (delegates to d3-hierarchy)
         store.ts          ← MindmapStore interface, InMemoryStore
         serialize.ts      ← serialize / deserialize, schemaVersion
         errors.ts         ← MindmapError, error codes
@@ -860,9 +858,11 @@ mindmaplib/
    updateNodeContent, setNodePosition, toggleNodeCollapsed. All maintain
    childOrder consistency.
 4. Queries: getChildren (ordered), getDescendants, getPath, getAncestors.
-5. Transaction factories and apply logic.
-6. MindmapEditor class with EditorState, undo/redo, selection, viewport.
-7. Validation and error handling (MindmapError).
+5. TransactionOp factories, buildTransaction, applyOp, applyTransaction,
+   VersionConflictError + strict mode.
+6. MindmapEditor class with EditorState, undo/redo (version incrementing),
+   selection, viewport.
+7. validateDoc + document invariants (throws DOC_INVARIANT_VIOLATION).
 8. InMemoryStore implementation.
 9. Layout engine integration (d3-hierarchy).
 10. serialize/deserialize with schemaVersion.
@@ -906,7 +906,8 @@ mindmaplib/
 - toggleNodeCollapsed: flips flag.
 - getChildren: returns nodes in childOrder order.
 - getDescendants / getPath / getAncestors: correct traversal.
-- computeLayout: fills positions for manualPosition=false nodes, preserves
+- computeLayoutOps: produces correct layoutPosition ops for
+  manualPosition=false nodes, preserves
   manualPosition=true positions, correct for each layout mode.
 - serialize / deserialize: round-trip preserves document, schemaVersion
   included, malformed JSON throws, unknown schemaVersion throws, extra fields
@@ -1007,3 +1008,9 @@ updates over WebSocket. The core engine should not need rewriting.
 - 0.4.2+backlog.0001: Codex review v0.4.1 — replaced create*Tx with
   create*Op + buildTransaction in public API, added layoutPosition op
   (auto-layout without marking manual), resetManualPosition in all lists.
+- 0.5.0+backlog.0001: Stevens final review — computeLayoutOps returns
+  TransactionOp[] (not MindmapDoc), removed duplicate undo paragraph,
+  Store conflict via SaveResult only (VERSION_CONFLICT removed from
+  StoreError), anchor sanitizer attrs clarified, added
+  DOC_INVARIANT_VIOLATION + INVALID_TRANSACTION error codes, Phase 1
+  outline updated.
