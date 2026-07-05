@@ -1,0 +1,31 @@
+{
+  "name": "mindmaplib",
+  "version": "0.0.1",
+  "description": "Embeddable mindmap engine for web apps. Drop-in interactive mind maps in any portal or application.",
+  "keywords": [
+    "mindmap",
+    "mind map",
+    "mindmap library",
+    "mindmap engine",
+    "interactive mindmap",
+    "embed mindmap",
+    "knowledge graph",
+    "visualization",
+    "diagram",
+    "web component"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/AndrewArto/mindmaplib.git"
+  },
+  "author": "Andrew Arto",
+  "private": true,
+  "main": "src/index.js",
+  "files": [
+    "src",
+    "dist",
+    "README.md",
+    "LICENSE"
+  ]
+}
