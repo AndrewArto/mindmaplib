@@ -201,17 +201,23 @@ function CanvasViewComponent({
     document.removeEventListener('mouseup', handleDragEnd)
   }, [editor, handleDragMove])
 
-  // Unmount cleanup: remove document listeners if component unmounts
-  // during an active pan/drag (P2 fix from codex r2)
+  // Unmount cleanup: commit pending drag, then remove document listeners
+  // if component unmounts during an active pan/drag (P2 fixes from codex r2/r3)
   useEffect(() => {
     return () => {
+      // If a drag was in progress, commit the final position so the editor
+      // gets proper version bump + undo entry. Without this, setPositionDirect
+      // changes are lost without undo semantics.
+      if (dragState.current && dragFinalPos.current) {
+        editor.commitPosition(dragState.current.nodeId, dragFinalPos.current)
+      }
       document.removeEventListener('mousemove', handleDragMove)
       document.removeEventListener('mouseup', handleDragEnd)
       panState.current = null
       dragState.current = null
       dragFinalPos.current = null
     }
-  }, [handleDragMove, handleDragEnd])
+  }, [editor, handleDragMove, handleDragEnd])
 
   // Mousedown: start pan or node drag, attach document listeners
   const handleMouseDown = useCallback(
