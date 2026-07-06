@@ -291,3 +291,130 @@ describe('MindmapEditor layout', () => {
     }
   })
 })
+
+// --- C2: setPositionDirect / commitPosition (MML-B-0009) ---
+
+describe('MindmapEditor drag-position (C2 fix)', () => {
+  it('setPositionDirect does not increment version', () => {
+    const editor = new MindmapEditor(createDoc('D'))
+    const root = editor.getDoc().rootId
+    const child = editor.addChild(root)
+    const v = editor.getDoc().version
+    editor.setPositionDirect(child, { x: 10, y: 10 })
+    editor.setPositionDirect(child, { x: 20, y: 20 })
+    editor.setPositionDirect(child, { x: 30, y: 30 })
+    expect(editor.getDoc().version).toBe(v) // no version bump
+    // position should reflect the last setPositionDirect
+    expect(editor.getDoc().nodes[child]!.position).toEqual({ x: 30, y: 30 })
+  })
+
+  it('commitPosition creates one undo entry for entire drag', () => {
+    const editor = new MindmapEditor(createDoc('D'))
+    const root = editor.getDoc().rootId
+    const child = editor.addChild(root)
+    // Set a known starting position
+    editor.setPosition(child, { x: 0, y: 0 })
+    const vAfterSet = editor.getDoc().version
+
+    // Simulate drag: 5 direct updates, no version bump
+    editor.setPositionDirect(child, { x: 10, y: 10 })
+    editor.setPositionDirect(child, { x: 20, y: 20 })
+    editor.setPositionDirect(child, { x: 30, y: 30 })
+    editor.setPositionDirect(child, { x: 40, y: 40 })
+    editor.setPositionDirect(child, { x: 50, y: 50 })
+    expect(editor.getDoc().version).toBe(vAfterSet) // still no bump
+
+    // Commit: one undo entry, version +1
+    editor.commitPosition(child, { x: 50, y: 50 })
+    expect(editor.getDoc().version).toBe(vAfterSet + 1)
+
+    // ONE undo reverts to before all 5 setPositionDirect calls
+    editor.undo()
+    expect(editor.getDoc().nodes[child]!.position).toEqual({ x: 0, y: 0 })
+  })
+
+  it('setPosition is an alias for commitPosition (backward compat)', () => {
+    const editor = new MindmapEditor(createDoc('D'))
+    const root = editor.getDoc().rootId
+    const child = editor.addChild(root)
+    const v = editor.getDoc().version
+    editor.setPosition(child, { x: 100, y: 100 })
+    // setPosition should create an undo entry and bump version
+    expect(editor.getDoc().version).toBe(v + 1)
+    expect(editor.canUndo()).toBe(true)
+    editor.undo()
+    // after undo, position reverts
+    const pos = editor.getDoc().nodes[child]!.position
+    // original position was null (before setPosition), or whatever addChild set
+    expect(pos === null || (pos!.x === 0 && pos!.y === 0)).toBe(true)
+  })
+})
+
+// --- C3: fitToScreen container dimensions (MML-B-0009) ---
+
+describe('MindmapEditor fitToScreen (C3 fix)', () => {
+  it('uses provided container dimensions for zoom calculation', () => {
+    const doc = createDoc('F')
+    // Manually set two nodes far apart to create a known bounding box
+    const rootNode = doc.nodes[doc.rootId]!
+    const testDoc = {
+      ...doc,
+      nodes: {
+        [doc.rootId]: { ...rootNode, position: { x: 0, y: 0 } },
+        child1: {
+          id: 'child1',
+          parentId: doc.rootId,
+          position: { x: 1000, y: 800 },
+          manualPosition: false,
+          collapsed: false,
+          childOrder: [],
+          content: {
+            type: 'doc' as const,
+            content: [{ type: 'paragraph' as const }],
+          },
+        },
+      },
+    }
+    // Content bbox: (0,0) to (1120, 840) with default node size 120x40
+    // width=1120, height=840
+
+    const editor = new MindmapEditor(testDoc)
+    editor.fitToScreen(1200, 800)
+    // zoom = min(1200/1120, 800/840, 1) = min(1.07, 0.95, 1) = 0.952
+    const expectedZoom = Math.min(1200 / 1120, 800 / 840, 1)
+    expect(editor.getState().viewport.zoom).toBeCloseTo(expectedZoom, 2)
+  })
+
+  it('different container sizes produce different zoom levels', () => {
+    const doc = createDoc('F')
+    const rootNode = doc.nodes[doc.rootId]!
+    const testDoc = {
+      ...doc,
+      nodes: {
+        [doc.rootId]: { ...rootNode, position: { x: 0, y: 0 } },
+        child1: {
+          id: 'child1',
+          parentId: doc.rootId,
+          position: { x: 1000, y: 800 },
+          manualPosition: false,
+          collapsed: false,
+          childOrder: [],
+          content: {
+            type: 'doc' as const,
+            content: [{ type: 'paragraph' as const }],
+          },
+        },
+      },
+    }
+
+    const editorLarge = new MindmapEditor(testDoc)
+    editorLarge.fitToScreen(1200, 800)
+    const zoomLarge = editorLarge.getState().viewport.zoom
+
+    const editorSmall = new MindmapEditor(testDoc)
+    editorSmall.fitToScreen() // default 800x600
+    const zoomSmall = editorSmall.getState().viewport.zoom
+
+    expect(zoomLarge).toBeGreaterThan(zoomSmall)
+  })
+})

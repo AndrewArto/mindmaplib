@@ -85,16 +85,33 @@ export function computeLayoutOps(
       ? effectiveSize.width + spacingX
       : effectiveSize.height + spacingY
 
-  // Lay out. For radial, size() maps the full tree into the given box.
-  // Total radius = maxDepth * depthW so each depth level is one depthW apart.
-  // Root (depth 0) at center, depth 1 at depthW, depth 2 at 2*depthW.
-  // For tree modes, nodeSize() gives per-level spacing directly.
-  const maxDepth = h.height ?? 0
-  const radialRadius = Math.max(maxDepth * depthW, 1)
-  const laid: HierarchyPointNode<MindmapNode> =
-    mode === 'radial'
-      ? tree<MindmapNode>().size([2 * Math.PI, radialRadius])(h)
-      : tree<MindmapNode>().nodeSize([siblingW, depthW])(h)
+  // Lay out using nodeSize for ALL modes (per-leaf spacing, per-depth spacing).
+  let laid: HierarchyPointNode<MindmapNode>
+  let radialAngleScale = 0
+  let radialXMin = 0
+
+  if (mode === 'radial') {
+    // Radial: use nodeSize([1, radialStep]) so x = leaf index, y = depth * step.
+    // Compute a depth step that ensures the depth-1 ring has enough
+    // circumference for all depth-1 siblings (no overlap at innermost ring).
+    const depthOneCount = h.children?.length ?? 0
+    const effectiveWidth = effectiveSize.width + spacingX
+    const minRadius = Math.max(
+      (depthOneCount * effectiveWidth) / (2 * Math.PI),
+      effectiveSize.width * 2,
+    )
+    const radialStep = Math.max(depthW, minRadius)
+    laid = tree<MindmapNode>().nodeSize([1, radialStep])(h)
+    // Map d.x (leaf-index, centered around 0 by d3) to [0, 2π).
+    // Using the actual x-range avoids wrap-around collisions (e.g.
+    // x=−N/2 and x=+N/2 mapping to the same angle).
+    const xVals = laid.descendants().map((d) => d.x)
+    radialXMin = Math.min(...xVals)
+    const xRange = Math.max(...xVals) - radialXMin
+    radialAngleScale = (2 * Math.PI) / Math.max(xRange, 1)
+  } else {
+    laid = tree<MindmapNode>().nodeSize([siblingW, depthW])(h)
+  }
 
   const toPos = (d: HierarchyPointNode<MindmapNode>): Position => {
     const x = d.x ?? 0
@@ -106,8 +123,10 @@ export function computeLayoutOps(
     if (mode === 'tree-vertical') {
       return { x, y }
     }
-    // radial: d.x is angle, d.y is radius
-    return { x: y * Math.cos(x), y: y * Math.sin(x) }
+    // radial: x is leaf-index → angle, y is depth * step → radius
+    const angle = (x - radialXMin) * radialAngleScale
+    const radius = y
+    return { x: radius * Math.cos(angle), y: radius * Math.sin(angle) }
   }
 
   const ops: TransactionOp[] = []

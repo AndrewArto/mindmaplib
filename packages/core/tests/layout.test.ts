@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { computeLayoutOps } from '../src/layout.js'
 import { createDoc, addNode, getNode } from '../src/document.js'
-import type { MindmapDoc } from '../src/types.js'
+import type { MindmapDoc, Position } from '../src/types.js'
 
 function findNewId(
   before: MindmapDoc,
@@ -102,5 +102,81 @@ describe('computeLayoutOps', () => {
       const ops = computeLayoutOps(doc, mode)
       expect(ops.length).toBe(3) // root + 2 children
     }
+  })
+
+  // --- C1: Radial layout no-overlap (MML-B-0009) ---
+
+  /**
+   * Build a 3-level tree: 1 root -> 4 children -> 3 grandchildren each (12 leaves).
+   */
+  function buildRadialTestTree(): {
+    doc: MindmapDoc
+    root: string
+    childIds: string[]
+  } {
+    let doc = createDoc('C1')
+    const root = doc.rootId
+    const childIds: string[] = []
+    for (let i = 0; i < 4; i++) {
+      const before = doc
+      doc = addNode(doc, root)
+      childIds.push(findNewId(before, doc, root))
+    }
+    for (const childId of childIds) {
+      for (let i = 0; i < 3; i++) {
+        doc = addNode(doc, childId)
+      }
+    }
+    return { doc, root, childIds }
+  }
+
+  it('radial: depth-1 nodes do not overlap with 4 children (C1 fix)', () => {
+    const { doc, childIds } = buildRadialTestTree()
+    const nodeWidth = 160
+    const ops = computeLayoutOps(doc, 'radial', {
+      defaultNodeSize: { width: nodeWidth, height: 40 },
+      spacingX: 40,
+      spacingY: 20,
+    })
+    const posMap = new Map<string, Position>()
+    for (const op of ops) {
+      if ('nodeId' in op) posMap.set(op.nodeId, op.position)
+    }
+    for (let i = 0; i < childIds.length; i++) {
+      for (let j = i + 1; j < childIds.length; j++) {
+        const p1 = posMap.get(childIds[i]!)
+        const p2 = posMap.get(childIds[j]!)
+        expect(p1).toBeDefined()
+        expect(p2).toBeDefined()
+        const dist = Math.hypot(p1!.x - p2!.x, p1!.y - p2!.y)
+        expect(dist).toBeGreaterThanOrEqual(nodeWidth)
+      }
+    }
+  })
+
+  it('radial: root is at center (C1 fix)', () => {
+    const { doc, root } = buildRadialTestTree()
+    const ops = computeLayoutOps(doc, 'radial')
+    const rootOp = ops.find((o) => 'nodeId' in o && o.nodeId === root) as
+      { position: Position } | undefined
+    expect(rootOp).toBeDefined()
+    const r = Math.hypot(rootOp!.position.x, rootOp!.position.y)
+    expect(r).toBeLessThan(1)
+  })
+
+  it('radial: depth increases with distance from origin (C1 fix)', () => {
+    const { doc, childIds } = buildRadialTestTree()
+    const ops = computeLayoutOps(doc, 'radial')
+    const posMap = new Map<string, Position>()
+    for (const op of ops) {
+      if ('nodeId' in op) posMap.set(op.nodeId, op.position)
+    }
+    const childR = Math.hypot(
+      posMap.get(childIds[0]!)!.x,
+      posMap.get(childIds[0]!)!.y,
+    )
+    const gcId = doc.nodes[childIds[0]!]!.childOrder[0]!
+    const gcR = Math.hypot(posMap.get(gcId)!.x, posMap.get(gcId)!.y)
+    expect(gcR).toBeGreaterThan(childR)
   })
 })

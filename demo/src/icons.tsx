@@ -5,7 +5,9 @@ interface IconProps {
   size?: number
 }
 
-export function IconTreeHorizontal({ size = 18 }: IconProps): React.ReactElement {
+export function IconTreeHorizontal({
+  size = 18,
+}: IconProps): React.ReactElement {
   return (
     <svg
       width={size}
@@ -158,7 +160,13 @@ const layoutLabels: Record<string, string> = {
   radial: 'Radial',
 }
 
-export function LayoutIcon({ mode, size }: { mode: string; size?: number }): React.ReactElement {
+export function LayoutIcon({
+  mode,
+  size,
+}: {
+  mode: string
+  size?: number
+}): React.ReactElement {
   const Icon = layoutIcons[mode] ?? IconTreeHorizontal
   return <Icon size={size} />
 }

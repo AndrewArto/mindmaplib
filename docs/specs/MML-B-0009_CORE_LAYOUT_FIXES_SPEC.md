@@ -20,6 +20,7 @@ Three bugs in @mindmaplib/core block the demo from being usable:
 `tree().size([2 * Math.PI, radialRadius])` for radial mode.
 
 `size()` distributes the ENTIRE tree into a fixed box. For radial:
+
 - Root at radius 0 (center)
 - Depth-1 nodes at radius `radialRadius / maxDepth` (NOT `radialRadius`)
 - With 4 depth-1 nodes at radius ~30 and node width 160px+, they overlap completely
@@ -109,6 +110,7 @@ children, 12 depth-2 leaves) — no overlaps, nodes clearly separated.
 
 Add test: `computeLayoutOps` with radial mode on a 3-level tree (1 root,
 4 children, 12 grandchildren). Assert:
+
 - No two nodes at the same depth have positions within `effectiveSize.width`
   of each other (arc distance check)
 - Root is at (0, 0) or very close
@@ -148,7 +150,7 @@ editor.beginTransaction()
 // multiple setPosition calls, no undo entries
 editor.setPosition(id, pos1)
 editor.setPosition(id, pos2)
-editor.endTransaction()  // creates ONE undo entry for all changes
+editor.endTransaction() // creates ONE undo entry for all changes
 ```
 
 Either approach is acceptable. The key requirement: drag produces ONE

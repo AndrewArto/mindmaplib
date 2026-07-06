@@ -57,6 +57,7 @@ export class MindmapEditor {
   private readonly store?: MindmapStore
   private lastSavedVersion: number
   private lastTransaction: Transaction | null = null
+  private dragSnapshot: MindmapDoc | null = null
 
   private readonly listeners = new Set<(state: EditorState) => void>()
 
@@ -167,9 +168,42 @@ export class MindmapEditor {
   }
 
   setPosition(nodeId: string, position: Position): void {
-    this.apply(
-      buildTransaction(this.doc, createSetPositionOp(nodeId, position)),
-    )
+    // Backward-compatible alias for commitPosition (MML-B-0009 C2).
+    this.commitPosition(nodeId, position)
+  }
+
+  /**
+   * Update node position without creating an undo entry or incrementing the
+   * document version. Used during drag: many updates, one undo entry on
+   * commit. Call commitPosition when the drag ends.
+   */
+  setPositionDirect(nodeId: string, position: Position): void {
+    if (this.dragSnapshot === null) {
+      // Capture the pre-drag state on the first direct call.
+      this.dragSnapshot = this.doc
+    }
+    const tx = buildTransaction(this.doc, createSetPositionOp(nodeId, position))
+    const next = applyTransaction(this.doc, tx)
+    // Revert version bump: direct updates don't create new revisions.
+    this.doc = { ...next, version: this.doc.version }
+    this.lastTransaction = tx
+    this.notify()
+  }
+
+  /**
+   * Commit the current document state as a single undo entry.
+   * Captures the pre-drag state (saved by the first setPositionDirect call)
+   * so undo reverts the entire drag in one step.
+   */
+  commitPosition(nodeId: string, position: Position): void {
+    const snapshot = this.dragSnapshot ?? this.doc
+    this.pushUndo(snapshot)
+    this.redoStack = []
+    const tx = buildTransaction(this.doc, createSetPositionOp(nodeId, position))
+    this.doc = applyTransaction(this.doc, tx)
+    this.lastTransaction = tx
+    this.dragSnapshot = null
+    this.notify()
   }
 
   resetManualPosition(nodeId: string): void {
@@ -204,8 +238,12 @@ export class MindmapEditor {
     this.notify()
   }
 
-  /** Compute a viewport that fits all positioned nodes (best-effort, PoC). */
-  fitToScreen(): void {
+  /**
+   * Compute a viewport that fits all positioned nodes (best-effort, PoC).
+   * Pass container dimensions for correct zoom; omitting them falls back to
+   * 800×600 (deprecated).
+   */
+  fitToScreen(containerWidth?: number, containerHeight?: number): void {
     const positioned = Object.values(this.doc.nodes).filter(
       (n) => n.position !== null,
     )
@@ -228,8 +266,8 @@ export class MindmapEditor {
     }
     const width = Math.max(maxX - minX, 1)
     const height = Math.max(maxY - minY, 1)
-    const canvasW = 800
-    const canvasH = 600
+    const canvasW = containerWidth ?? 800
+    const canvasH = containerHeight ?? 600
     const zoom = Math.min(canvasW / width, canvasH / height, 1)
     const x = (canvasW - width * zoom) / 2 - minX * zoom
     const y = (canvasH - height * zoom) / 2 - minY * zoom
