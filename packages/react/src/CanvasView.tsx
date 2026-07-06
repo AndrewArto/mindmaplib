@@ -201,6 +201,18 @@ function CanvasViewComponent({
     document.removeEventListener('mouseup', handleDragEnd)
   }, [editor, handleDragMove])
 
+  // Unmount cleanup: remove document listeners if component unmounts
+  // during an active pan/drag (P2 fix from codex r2)
+  useEffect(() => {
+    return () => {
+      document.removeEventListener('mousemove', handleDragMove)
+      document.removeEventListener('mouseup', handleDragEnd)
+      panState.current = null
+      dragState.current = null
+      dragFinalPos.current = null
+    }
+  }, [handleDragMove, handleDragEnd])
+
   // Mousedown: start pan or node drag, attach document listeners
   const handleMouseDown = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
