@@ -55,6 +55,27 @@ function setSessionUrl(id: string | null): void {
   window.history.replaceState({}, '', url)
 }
 
+function BrandMark(): React.ReactElement {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="6" cy="6" r="2.5" fill="#21426f" />
+      <circle cx="18" cy="6" r="2.5" fill="#355585" />
+      <circle cx="12" cy="18" r="2.5" fill="#21426f" />
+      <line x1="6" y1="6" x2="18" y2="6" stroke="#21426f" strokeWidth="1.2" opacity="0.4" />
+      <line x1="6" y1="6" x2="12" y2="18" stroke="#21426f" strokeWidth="1.2" opacity="0.4" />
+      <line x1="18" y1="6" x2="12" y2="18" stroke="#21426f" strokeWidth="1.2" opacity="0.4" />
+    </svg>
+  )
+}
+
+const statusText: Record<SaveState, string> = {
+  idle: 'Local sample',
+  saving: 'Saving…',
+  saved: 'Saved to D1',
+  error: 'Save failed',
+  conflict: 'Conflict',
+}
+
 export function App(): React.ReactElement {
   const store = useMemo(() => new D1Store(), [])
   const [editor, setEditor] = useState<MindmapEditor>(() =>
@@ -178,23 +199,27 @@ export function App(): React.ReactElement {
     <div className={`demo-shell theme-${theme}`}>
       <header className="topbar">
         <div className="brand-block">
-          <div className="eyebrow">mindmaplib demo</div>
-          <h1>Embeddable mind maps for product teams</h1>
+          <div className="brand-mark">
+            <BrandMark />
+            <span>mindmaplib</span>
+          </div>
+          <span className="demo-badge">demo</span>
         </div>
-        <div className="topbar-actions" aria-label="Demo controls">
-          <button type="button" onClick={createSession}>
-            New saved map
+        <div className="topbar-actions">
+          <button type="button" className="btn btn-primary" onClick={createSession}>
+            New map
           </button>
-          <button type="button" onClick={resetLocalDemo}>
-            Local sample
+          <button type="button" className="btn btn-secondary" onClick={resetLocalDemo}>
+            Sample
           </button>
           <select
+            className="theme-select"
             aria-label="Theme"
             value={theme}
             onChange={(event) => setTheme(event.target.value as ThemeName)}
           >
-            <option value="triplea">TripleA</option>
-            <option value="triplea-dark">TripleA dark</option>
+            <option value="triplea">Light</option>
+            <option value="triplea-dark">Dark</option>
           </select>
         </div>
       </header>
@@ -203,69 +228,73 @@ export function App(): React.ReactElement {
         <aside className="sidebar" aria-label="Saved maps">
           <div className="sidebar-header">
             <h2>Saved maps</h2>
-            <button type="button" onClick={() => void refreshSessions()}>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => void refreshSessions()}
+            >
               Refresh
             </button>
           </div>
-          {sessions.length === 0 ? (
-            <p className="empty-state">
-              No D1 sessions yet. Create a saved map to persist changes.
-            </p>
-          ) : (
-            <ul className="session-list">
-              {sessions.map((session) => (
-                <li key={session.id}>
-                  <button
-                    type="button"
-                    className={
-                      session.id === activeSessionId
-                        ? 'session-button active'
-                        : 'session-button'
-                    }
-                    onClick={() => void loadSession(session.id)}
-                  >
-                    <span>{session.title}</span>
-                    <small>
-                      v{session.version} · {formatUpdated(session.updated)}
-                    </small>
-                  </button>
-                  <button
-                    type="button"
-                    className="delete-button"
-                    aria-label={`Delete ${session.title}`}
-                    onClick={() => void deleteSession(session.id)}
-                  >
-                    Delete
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
+          <div className="sidebar-body">
+            {sessions.length === 0 ? (
+              <p className="empty-state">
+                No saved maps yet. Click "New map" to persist changes in D1.
+              </p>
+            ) : (
+              <ul className="session-list">
+                {sessions.map((session) => (
+                  <li key={session.id}>
+                    <button
+                      type="button"
+                      className={
+                        session.id === activeSessionId
+                          ? 'session-button active'
+                          : 'session-button'
+                      }
+                      onClick={() => void loadSession(session.id)}
+                    >
+                      <span>{session.title}</span>
+                      <small>
+                        v{session.version} · {formatUpdated(session.updated)}
+                      </small>
+                    </button>
+                    <button
+                      type="button"
+                      className="delete-button"
+                      aria-label={`Delete ${session.title}`}
+                      onClick={() => void deleteSession(session.id)}
+                    />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </aside>
 
         <section className="map-card" aria-label="Mindmap editor">
           <div className="map-toolbar">
-            <div>
+            <div className="map-title-block">
               <strong>{editor.getDoc().meta.title}</strong>
-              <span>
-                {activeSessionId
-                  ? `Saved in D1 · ${saveState}`
-                  : 'Local sample'}
+              <span className={`status-badge ${saveState}`}>
+                {statusText[saveState]}
               </span>
             </div>
             <div className="toolbar-buttons">
-              {layouts.map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  className={`icon-button ${layout === mode ? 'active' : ''}`}
-                  title={layoutLabel(mode)}
-                  aria-label={layoutLabel(mode)}
-                  onClick={() => applyLayout(mode)}
-                >
-                  <LayoutIcon mode={mode} />
-                </button>
-              ))}
+              <div className="toolbar-group">
+                {layouts.map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    className={`icon-button ${layout === mode ? 'active' : ''}`}
+                    title={layoutLabel(mode)}
+                    aria-label={layoutLabel(mode)}
+                    onClick={() => applyLayout(mode)}
+                  >
+                    <LayoutIcon mode={mode} size={16} />
+                  </button>
+                ))}
+              </div>
               <span className="toolbar-divider" />
               <button
                 type="button"
@@ -274,7 +303,7 @@ export function App(): React.ReactElement {
                 aria-label="Fit to screen"
                 onClick={() => editor.fitToScreen()}
               >
-                <IconFit />
+                <IconFit size={16} />
               </button>
               <button
                 type="button"
@@ -283,7 +312,7 @@ export function App(): React.ReactElement {
                 aria-label="Undo"
                 onClick={() => editor.undo()}
               >
-                <IconUndo />
+                <IconUndo size={16} />
               </button>
               <button
                 type="button"
@@ -292,17 +321,17 @@ export function App(): React.ReactElement {
                 aria-label="Redo"
                 onClick={() => editor.redo()}
               >
-                <IconRedo />
+                <IconRedo size={16} />
               </button>
               <span className="toolbar-divider" />
               <button
                 type="button"
-                className="icon-button"
+                className={`icon-button ${showOutline ? 'active' : ''}`}
                 title={showOutline ? 'Hide outline' : 'Show outline'}
                 aria-label={showOutline ? 'Hide outline' : 'Show outline'}
                 onClick={() => setShowOutline((value) => !value)}
               >
-                <IconPanelToggle />
+                <IconPanelToggle size={16} />
               </button>
             </div>
           </div>
