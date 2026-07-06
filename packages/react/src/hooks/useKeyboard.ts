@@ -52,7 +52,7 @@ export function useKeyboard(
       const doc = state.doc
 
       // Undo/Redo (work without selection)
-      if (isMod(e) && e.key === 'z') {
+      if (isMod(e) && e.key.toLowerCase() === 'z') {
         if (e.shiftKey) {
           editor.redo()
         } else {

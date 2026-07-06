@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build && node build-worker.mjs",
+    "build": "pnpm --filter @mindmaplib/core build && pnpm --filter @mindmaplib/react build && vite build && node build-worker.mjs",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit"
   },

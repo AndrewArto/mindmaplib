@@ -6,7 +6,7 @@
 // calls editor.updateContent(), then editor.stopEditing() — content persists BEFORE
 // the editingNodeId clears to prevent losing unsaved edits.
 
-import { memo, useEffect } from 'react'
+import { memo, useEffect, useRef } from 'react'
 import { EditorContent, useEditor as useTipTapEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Link from '@tiptap/extension-link'
@@ -32,6 +32,51 @@ function nodePropsEqual(prev: NodeViewProps, next: NodeViewProps): boolean {
   )
 }
 
+function EditingNodeContent({
+  node,
+  editor,
+  extensions,
+  exitEditModeRef,
+}: Pick<NodeViewProps, 'node' | 'editor' | 'exitEditModeRef'> & {
+  extensions: Extensions
+}): React.ReactElement {
+  const persistedRef = useRef(false)
+  const tiptapEditor = useTipTapEditor({
+    extensions: extensions,
+    content: toTipTapJSON(node.content),
+    editable: true,
+    immediatelyRender: false,
+  })
+
+  useEffect(() => {
+    if (!tiptapEditor) return
+
+    const persist = () => {
+      if (persistedRef.current) return
+      persistedRef.current = true
+      const json = tiptapEditor.getJSON()
+      const content = fromTipTapJSON(json)
+      editor.updateContent(node.id, content)
+      editor.stopEditing()
+    }
+
+    exitEditModeRef.current = persist
+    return () => {
+      persist()
+      if (exitEditModeRef.current === persist) {
+        exitEditModeRef.current = null
+      }
+    }
+  }, [tiptapEditor, editor, node.id, exitEditModeRef])
+
+  return (
+    <EditorContent
+      editor={tiptapEditor}
+      className="mml-node-content mml-node-content--editing"
+    />
+  )
+}
+
 function NodeViewComponent({
   node,
   editor,
@@ -53,30 +98,6 @@ function NodeViewComponent({
         extensions,
       )
   const html = sanitizeMindmapHtml(rawHtml)
-
-  // TipTap editor instance for editing mode
-  const tiptapEditor = useTipTapEditor({
-    extensions: extensions,
-    content: toTipTapJSON(node.content),
-    editable: true,
-    immediatelyRender: false,
-  })
-
-  // Register exitEditMode callback when entering edit mode
-  useEffect(() => {
-    if (isEditing && tiptapEditor) {
-      exitEditModeRef.current = () => {
-        if (!tiptapEditor) return
-        const json = tiptapEditor.getJSON()
-        const content = fromTipTapJSON(json)
-        editor.updateContent(node.id, content)
-        editor.stopEditing()
-      }
-      return () => {
-        exitEditModeRef.current = null
-      }
-    }
-  }, [isEditing, tiptapEditor, editor, node.id, exitEditModeRef])
 
   const className = [
     'mml-node',
@@ -105,9 +126,11 @@ function NodeViewComponent({
       }}
     >
       {isEditing ? (
-        <EditorContent
-          editor={tiptapEditor}
-          className="mml-node-content mml-node-content--editing"
+        <EditingNodeContent
+          node={node}
+          editor={editor}
+          extensions={extensions}
+          exitEditModeRef={exitEditModeRef}
         />
       ) : customNodeRenderer ? (
         customNodeRenderer({ node, editor, isEditing, html })

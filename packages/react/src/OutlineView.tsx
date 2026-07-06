@@ -283,11 +283,15 @@ function OutlineViewComponent({
               editor.deleteNode(node.id)
             }
             if (node.childOrder.length > 0) {
-              const shouldDelete = confirmDelete
-                ? confirmDelete(node)
-                : typeof window !== 'undefined' &&
-                  window.confirm(`Delete "${node.id}" and its subtree?`)
-              if (shouldDelete) doDelete()
+              const confirmPromise = confirmDelete
+                ? resolveConfirm(confirmDelete, node)
+                : Promise.resolve(
+                    typeof window !== 'undefined' &&
+                      window.confirm(`Delete "${node.id}" and its subtree?`),
+                  )
+              confirmPromise.then((confirmed) => {
+                if (confirmed) doDelete()
+              })
             } else {
               doDelete()
             }

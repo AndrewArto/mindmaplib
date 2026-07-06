@@ -147,7 +147,7 @@ describe('OutlineView advanced', () => {
     expect(editor.getState().selectedNodeId).toBeNull()
   })
 
-  it('Delete removes non-root node', () => {
+  it('Delete removes non-root node', async () => {
     const editor = makeDeepTree()
     const doc = editor.getDoc()
     const firstChild = doc.nodes[doc.rootId].childOrder[0]
@@ -159,6 +159,7 @@ describe('OutlineView advanced', () => {
     const tree = container.querySelector('[role="tree"]') as HTMLElement
     fireEvent.focus(tree)
     fireEvent.keyDown(tree, { key: 'Delete' })
+    await Promise.resolve()
     window.confirm = origConfirm
     expect(editor.getState().doc.nodes[firstChild]).toBeUndefined()
   })
