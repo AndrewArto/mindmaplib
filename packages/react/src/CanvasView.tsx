@@ -153,12 +153,17 @@ function CanvasViewComponent({
     editor,
   ])
 
-  // Pan/drag handler (background pan + node drag)
+  // A2: Track drag final position for commitPosition on mouseup
+  const dragFinalPos = useRef<{ x: number; y: number } | null>(null)
+
+  // Pan handler: mousedown on background (non-node) starts pan.
+  // Node drag starts via NodeView's own mousedown handler.
   const handleMouseDown = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
-      // Check if mousedown is on a node (for drag)
       const target = e.target as HTMLElement
       const nodeEl = target.closest('[data-node-id]')
+
+      // If clicking on a node, start node drag
       if (nodeEl) {
         const nodeId = nodeEl.getAttribute('data-node-id')
         if (nodeId) {
@@ -174,15 +179,18 @@ function CanvasViewComponent({
               offsetX: docX - node.position.x,
               offsetY: docY - node.position.y,
             }
+            // A2: Attach document-level listeners for drag tracking
+            document.addEventListener('mousemove', handleDragMove)
+            document.addEventListener('mouseup', handleDragEnd)
             return
           }
         }
       }
-      // Background pan
-      if (
-        e.target === e.currentTarget ||
-        (e.target as HTMLElement).classList.contains('mml-canvas-pan-target')
-      ) {
+
+      // A1: Background pan — start if target is NOT inside a node.
+      // Previous code required target === currentTarget or specific class,
+      // which blocked pan when clicking on SVG edges or other children.
+      if (!nodeEl) {
         panState.current = {
           startX: e.clientX,
           startY: e.clientY,
@@ -194,6 +202,46 @@ function CanvasViewComponent({
     [viewport.x, viewport.y, viewport.zoom, doc],
   )
 
+  // A2: Node drag move — uses setPositionDirect (no undo entry per move)
+  const handleDragMove = useCallback(
+    (e: MouseEvent) => {
+      if (dragState.current) {
+        const { nodeId, offsetX, offsetY } = dragState.current
+        const rect = containerRef.current!.getBoundingClientRect()
+        const screenX = e.clientX - rect.left
+        const screenY = e.clientY - rect.top
+        const docX = (screenX - viewport.x) / viewport.zoom - offsetX
+        const docY = (screenY - viewport.y) / viewport.zoom - offsetY
+        editor.setPositionDirect(nodeId, { x: docX, y: docY })
+        dragFinalPos.current = { x: docX, y: docY }
+        return
+      }
+      if (panState.current) {
+        const dx = e.clientX - panState.current.startX
+        const dy = e.clientY - panState.current.startY
+        editor.setViewport({
+          ...viewport,
+          x: panState.current.vpX + dx,
+          y: panState.current.vpY + dy,
+        })
+      }
+    },
+    [editor, viewport],
+  )
+
+  // A2: Node drag end — commitPosition creates single undo entry
+  const handleDragEnd = useCallback(() => {
+    if (dragState.current && dragFinalPos.current) {
+      editor.commitPosition(dragState.current.nodeId, dragFinalPos.current)
+    }
+    dragState.current = null
+    dragFinalPos.current = null
+    panState.current = null
+    document.removeEventListener('mousemove', handleDragMove)
+    document.removeEventListener('mouseup', handleDragEnd)
+  }, [editor])
+
+  // Canvas-level mousemove for pan (React synthetic, stays on element)
   const handleMouseMove = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       if (panState.current) {
@@ -205,24 +253,9 @@ function CanvasViewComponent({
           y: panState.current.vpY + dy,
         })
       }
-      if (dragState.current) {
-        const { nodeId, offsetX, offsetY } = dragState.current
-        const screenX =
-          e.clientX - containerRef.current!.getBoundingClientRect().left
-        const screenY =
-          e.clientY - containerRef.current!.getBoundingClientRect().top
-        const docX = (screenX - viewport.x) / viewport.zoom - offsetX
-        const docY = (screenY - viewport.y) / viewport.zoom - offsetY
-        editor.setPosition(nodeId, { x: docX, y: docY })
-      }
     },
     [editor, viewport],
   )
-
-  const handleMouseUp = useCallback(() => {
-    panState.current = null
-    dragState.current = null
-  }, [])
 
   // Zoom handler (wheel, zoom-to-cursor)
   const handleWheel = useCallback(
@@ -260,8 +293,6 @@ function CanvasViewComponent({
       onKeyDown={keyboard.onKeyDown}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-      onMouseLeave={handleMouseUp}
       onWheel={handleWheel}
       onDoubleClick={(e) => {
         // Background double-click: could add root-level node; for now no-op
