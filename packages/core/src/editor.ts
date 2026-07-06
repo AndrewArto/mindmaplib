@@ -27,6 +27,7 @@ import {
   createSetPositionOp,
   createToggleCollapsedOp,
   createUpdateContentOp,
+  applyOp,
 } from './transactions.js'
 import { computeLayoutOps } from './layout.js'
 
@@ -295,15 +296,24 @@ export class MindmapEditor {
   /**
    * Store measured node sizes and trigger relayout if in auto-layout mode.
    * Called by the React adapter's ResizeObserver pipeline.
-   * Guard: only relayout when max dimensions actually changed (avoids loops).
+   *
+   * Stale entries (nodes no longer in the doc) are pruned so deleted nodes
+   * don't skew the max-size calculation. The relayout is applied silently
+   * (no undo entry, no version bump) because it's a background measurement
+   * update, not a user action.
    */
   setNodeMeasures(measures: NodeMeasures): void {
+    // P2 r1: Prune stale measures for nodes not in current doc
+    const filtered: NodeMeasures = {}
+    for (const [id, m] of Object.entries(measures)) {
+      if (this.doc.nodes[id]) filtered[id] = m
+    }
     const prev = this.nodeMeasures
-    this.nodeMeasures = measures
+    this.nodeMeasures = filtered
     if (this.layoutMode === 'free-float') return
     // Skip relayout if effective max dimensions are unchanged
     const prevVals = Object.values(prev)
-    const newVals = Object.values(measures)
+    const newVals = Object.values(filtered)
     if (prevVals.length > 0 && newVals.length > 0) {
       const prevMaxW = Math.max(...prevVals.map((m) => m.width))
       const prevMaxH = Math.max(...prevVals.map((m) => m.height))
@@ -311,11 +321,17 @@ export class MindmapEditor {
       const newMaxH = Math.max(...newVals.map((m) => m.height))
       if (prevMaxW === newMaxW && prevMaxH === newMaxH) return
     }
+    // P2 r1: Silent relayout — no undo entry, no version bump
     const ops = computeLayoutOps(this.doc, this.layoutMode, {
       nodeMeasures: this.nodeMeasures,
     })
     if (ops.length > 0) {
-      this.apply(buildTransaction(this.doc, ops))
+      let next = this.doc
+      for (const op of ops) {
+        next = applyOp(next, op)
+      }
+      this.doc = next
+      this.notify()
     }
   }
 

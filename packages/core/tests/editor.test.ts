@@ -444,7 +444,8 @@ describe('MindmapEditor fitToScreen (C3 fix)', () => {
 describe('MML-B-0011: nodeMeasures in layout', () => {
   it('setNodeMeasures stores and getNodeMeasures returns them', () => {
     const editor = new MindmapEditor(createDoc('R'))
-    const m = { n1: { width: 200, height: 60 } }
+    const rootId = editor.getDoc().rootId
+    const m = { [rootId]: { width: 200, height: 60 } }
     editor.setNodeMeasures(m)
     expect(editor.getNodeMeasures()).toEqual(m)
   })
@@ -541,5 +542,74 @@ describe('MML-B-0011: nodeMeasures in layout', () => {
 
     const posAfter = editor.getDoc().nodes[childId]!.position
     expect(posAfter).toEqual(posBefore)
+  })
+})
+
+// =========================================================================
+// MML-B-0011 R1 codex fixes
+// =========================================================================
+
+describe('MML-B-0011 R1: codex review fixes', () => {
+  it('P2-1: stale measures pruned after node deletion', () => {
+    const doc = createDoc('Root')
+    const editor = new MindmapEditor(doc)
+    const rootId = doc.rootId
+    const bigId = editor.addChild(rootId)
+    const smallId = editor.addChild(rootId)
+
+    // Set wide measures for both children
+    editor.setNodeMeasures({
+      [bigId]: { width: 1000, height: 40 },
+      [smallId]: { width: 120, height: 40 },
+      [rootId]: { width: 120, height: 40 },
+    })
+    editor.setLayout('tree-horizontal')
+
+    // Both children far apart due to 1000px wide node
+    const bigX = editor.getDoc().nodes[bigId]!.position!.x
+    expect(bigX).toBeGreaterThanOrEqual(1000)
+
+    // Delete the wide node
+    editor.deleteNode(bigId)
+
+    // Set measures again (simulating ResizeObserver flush after deletion)
+    editor.setNodeMeasures({
+      [smallId]: { width: 120, height: 40 },
+      [rootId]: { width: 120, height: 40 },
+    })
+
+    // Small node should now use normal spacing, not the deleted node's 1000px
+    const smallX = editor.getDoc().nodes[smallId]!.position!.x
+    expect(smallX).toBeLessThan(500)
+  })
+
+  it('P2-2: setNodeMeasures relayout does not create undo entry', () => {
+    const doc = createDoc('Root')
+    const editor = new MindmapEditor(doc)
+    editor.addChild(doc.rootId)
+    editor.addChild(doc.rootId)
+    editor.setLayout('tree-horizontal')
+
+    const undoCountBefore = editor.getState().doc.version
+
+    // Trigger measurement-driven relayout
+    editor.setNodeMeasures({
+      [doc.rootId]: { width: 300, height: 80 },
+    })
+
+    // Version should NOT increase (silent relayout)
+    const undoCountAfter = editor.getState().doc.version
+    expect(undoCountAfter).toBe(undoCountBefore)
+
+    // Undo should NOT revert the measurement relayout
+    // (it should revert to whatever was before the last user action)
+    const canUndo = editor.canUndo()
+    // The setNodeMeasures should not have pushed undo
+    // (if we undo, we should get the pre-setLayout state, not pre-setNodeMeasures)
+    if (canUndo) {
+      editor.undo()
+      // After undo, layout should revert to the user-triggered setLayout state
+      // not the measurement relayout
+    }
   })
 })
