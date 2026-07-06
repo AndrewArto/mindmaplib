@@ -93,6 +93,74 @@ describe('CanvasView pan/zoom', () => {
     expect(editor.getDoc().nodes[nodeId].position).not.toEqual(before)
   })
 
+  // --- MML-B-0010: Real browser pan/drag fix ---
+
+  it('F1: background mousedown calls preventDefault (no text selection)', () => {
+    const doc = createDoc('Test')
+    const editor = new MindmapEditor(doc)
+    const { container } = render(<Mindmap editor={editor} />)
+    const viewport = container.querySelector(
+      '.mml-canvas-viewport',
+    ) as HTMLElement
+
+    // Dispatch a real MouseEvent (not fireEvent) to check preventDefault
+    const event = new MouseEvent('mousedown', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 100,
+      clientY: 100,
+      button: 0,
+    })
+    viewport.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+  })
+
+  it('F1: node mousedown calls preventDefault (no native drag)', () => {
+    const doc = createDoc('Test')
+    const editor = new MindmapEditor(doc)
+    editor.setLayout('tree-horizontal')
+    const { container } = render(<Mindmap editor={editor} />)
+    const node = container.querySelector(
+      `[data-node-id="${editor.getDoc().rootId}"]`,
+    ) as HTMLElement
+
+    const event = new MouseEvent('mousedown', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 10,
+      clientY: 10,
+      button: 0,
+    })
+    node.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+  })
+
+  it('F4: handleMouseDown does not depend on doc (stable callback)', () => {
+    // This is a code-structure test: verify the handler doesn't
+    // capture stale doc by checking pan works after content change.
+    const doc = createDoc('Test')
+    const editor = new MindmapEditor(doc)
+    editor.setLayout('tree-horizontal')
+    const { container } = render(<Mindmap editor={editor} />)
+
+    // Add a child (changes doc reference)
+    editor.addChild(editor.getDoc().rootId)
+
+    // Pan should still work despite doc change
+    const viewport = container.querySelector(
+      '.mml-canvas-viewport',
+    ) as HTMLElement
+    const initialX = editor.getState().viewport.x
+
+    fireEvent.mouseDown(viewport, { clientX: 100, clientY: 100 })
+    fireEvent.mouseMove(document, { clientX: 150, clientY: 120 })
+    fireEvent.mouseUp(document)
+
+    expect(editor.getState().viewport.x).not.toBe(initialX)
+  })
+
   // --- A1: Canvas pan works through child elements (MML-B-0009 adapter) ---
 
   it('A1: pan starts when mousedown on SVG edge layer (non-node child)', () => {

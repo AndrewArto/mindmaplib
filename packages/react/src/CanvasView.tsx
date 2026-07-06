@@ -68,9 +68,13 @@ function CanvasViewComponent({
   } | null>(null)
 
   const state = useEditor(editor)
-  // Keep latest viewport in a ref so document-level handlers stay stable
+  // Keep latest viewport and doc in refs so handlers stay stable
   const viewportRef = useRef(state.viewport)
   viewportRef.current = state.viewport
+  const docRef = useRef(state.doc)
+  docRef.current = state.doc
+  const editingNodeIdRef = useRef(state.editingNodeId)
+  editingNodeIdRef.current = state.editingNodeId
   const keyboard = useKeyboard(editor, exitEditModeRef, confirmDelete)
   useNodeMeasures(editor, containerRef)
 
@@ -225,11 +229,27 @@ function CanvasViewComponent({
       const target = e.target as HTMLElement
       const nodeEl = target.closest('[data-node-id]')
       const vp = viewportRef.current
+      const currentDoc = docRef.current
+
+      // P1 r2: If clicking inside an actively edited node, let TipTap
+      // handle native focus/caret — don't preventDefault or start drag.
+      if (nodeEl) {
+        const clickedId = nodeEl.getAttribute('data-node-id')
+        if (clickedId && clickedId === editingNodeIdRef.current) {
+          return
+        }
+      }
+
+      // F1: Prevent default to stop native text selection and drag-and-drop
+      // that would suppress mousemove events in real browsers.
+      e.preventDefault()
+      // P2: Explicitly focus canvas since preventDefault blocks native focus
+      containerRef.current?.focus()
 
       if (nodeEl) {
         const nodeId = nodeEl.getAttribute('data-node-id')
         if (nodeId) {
-          const node = doc.nodes[nodeId]
+          const node = currentDoc.nodes[nodeId]
           if (node && node.position) {
             const rect = containerRef.current!.getBoundingClientRect()
             const screenX = e.clientX - rect.left
@@ -256,12 +276,11 @@ function CanvasViewComponent({
           vpX: vp.x,
           vpY: vp.y,
         }
-        // P1 fix: attach document listeners for pan tracking + cleanup
         document.addEventListener('mousemove', handleDragMove)
         document.addEventListener('mouseup', handleDragEnd)
       }
     },
-    [doc, handleDragMove, handleDragEnd],
+    [handleDragMove, handleDragEnd],
   )
 
   // Zoom handler (wheel, zoom-to-cursor)
