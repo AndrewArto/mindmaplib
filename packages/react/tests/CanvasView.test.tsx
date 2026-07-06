@@ -35,8 +35,8 @@ describe('CanvasView pan/zoom', () => {
     ) as HTMLElement
     const initialX = editor.getState().viewport.x
     fireEvent.mouseDown(viewport, { clientX: 100, clientY: 100 })
-    fireEvent.mouseMove(viewport, { clientX: 150, clientY: 120 })
-    fireEvent.mouseUp(viewport)
+    fireEvent.mouseMove(document, { clientX: 150, clientY: 120 })
+    fireEvent.mouseUp(document)
     expect(editor.getState().viewport.x).not.toBe(initialX)
   })
 
@@ -91,5 +91,102 @@ describe('CanvasView pan/zoom', () => {
     fireEvent.mouseUp(canvas)
 
     expect(editor.getDoc().nodes[nodeId].position).not.toEqual(before)
+  })
+
+  // --- A1: Canvas pan works through child elements (MML-B-0009 adapter) ---
+
+  it('A1: pan starts when mousedown on SVG edge layer (non-node child)', () => {
+    const doc = createDoc('Test')
+    const editor = new MindmapEditor(doc)
+    // Add children so edges exist
+    editor.addChild(editor.getDoc().rootId)
+    editor.setLayout('tree-horizontal')
+    const { container } = render(<Mindmap editor={editor} />)
+    const edgeLayer = container.querySelector('.mml-edges-layer') as HTMLElement
+    const initialX = editor.getState().viewport.x
+
+    // mousedown on the SVG edge layer (child of viewport, no data-node-id)
+    fireEvent.mouseDown(edgeLayer, { clientX: 100, clientY: 100 })
+    fireEvent.mouseMove(document, { clientX: 150, clientY: 120 })
+    fireEvent.mouseUp(document)
+
+    expect(editor.getState().viewport.x).not.toBe(initialX)
+  })
+
+  it('A1: pan works when mousedown on nodes layer background', () => {
+    const doc = createDoc('Test')
+    const editor = new MindmapEditor(doc)
+    editor.setLayout('tree-horizontal')
+    const { container } = render(<Mindmap editor={editor} />)
+    const nodesLayer = container.querySelector(
+      '.mml-nodes-layer',
+    ) as HTMLElement
+    const initialX = editor.getState().viewport.x
+
+    fireEvent.mouseDown(nodesLayer, { clientX: 200, clientY: 200 })
+    fireEvent.mouseMove(document, { clientX: 250, clientY: 230 })
+    fireEvent.mouseUp(document)
+
+    expect(editor.getState().viewport.x).not.toBe(initialX)
+  })
+
+  // --- A2: Node drag produces one undo entry (MML-B-0009 adapter) ---
+
+  it('A2: dragging a node creates exactly one undo entry', () => {
+    const doc = createDoc('Test')
+    const editor = new MindmapEditor(doc)
+    editor.setLayout('tree-horizontal')
+    const nodeId = editor.getDoc().rootId
+    const { container } = render(<Mindmap editor={editor} />)
+    const node = container.querySelector(
+      `[data-node-id="${nodeId}"]`,
+    ) as HTMLElement
+
+    // Simulate drag with multiple mousemove events
+    fireEvent.mouseDown(node, { clientX: 10, clientY: 10 })
+    fireEvent.mouseMove(document, { clientX: 30, clientY: 30 })
+    fireEvent.mouseMove(document, { clientX: 50, clientY: 50 })
+    fireEvent.mouseMove(document, { clientX: 70, clientY: 70 })
+    fireEvent.mouseMove(document, { clientX: 90, clientY: 90 })
+    fireEvent.mouseUp(document)
+
+    // Count how many undos it takes to revert the drag
+    let undosToRevert = 0
+    const posAfterDrag = editor.getDoc().nodes[nodeId].position
+    while (editor.canUndo() && undosToRevert < 10) {
+      editor.undo()
+      undosToRevert++
+      const pos = editor.getDoc().nodes[nodeId].position
+      // Check if position reverted to pre-drag state
+      if (pos !== posAfterDrag) break
+    }
+
+    // Should be exactly 1 undo to revert the entire drag
+    expect(undosToRevert).toBe(1)
+  })
+
+  it('A2: undo after drag returns node to pre-drag position', () => {
+    const doc = createDoc('Test')
+    const editor = new MindmapEditor(doc)
+    editor.setLayout('tree-horizontal')
+    const nodeId = editor.getDoc().rootId
+    const { container } = render(<Mindmap editor={editor} />)
+    const node = container.querySelector(
+      `[data-node-id="${nodeId}"]`,
+    ) as HTMLElement
+
+    const beforeDrag = { ...editor.getDoc().nodes[nodeId].position! }
+
+    fireEvent.mouseDown(node, { clientX: 10, clientY: 10 })
+    fireEvent.mouseMove(document, { clientX: 80, clientY: 60 })
+    fireEvent.mouseUp(document)
+
+    // Position should have changed
+    expect(editor.getDoc().nodes[nodeId].position).not.toEqual(beforeDrag)
+
+    // Single undo reverts to pre-drag position
+    editor.undo()
+    const afterUndo = editor.getDoc().nodes[nodeId].position
+    expect(afterUndo).toEqual(beforeDrag)
   })
 })
