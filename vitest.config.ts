@@ -17,7 +17,7 @@ export default defineConfig({
         // Core tests: Node environment
         test: {
           name: 'core',
-          include: ['packages/core/test/**/*.test.ts'],
+          include: ['packages/core/tests/**/*.test.ts'],
         },
       },
       {
