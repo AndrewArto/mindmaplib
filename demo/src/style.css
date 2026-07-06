@@ -581,7 +581,7 @@ button {
   }
 }
 
-/* --- Theme swatches --- */
+/* --- Theme toggle --- */
 
 .topbar-divider {
   width: 1px;
@@ -591,39 +591,65 @@ button {
   flex-shrink: 0;
 }
 
-.theme-switcher {
+.theme-toggle {
   display: flex;
   align-items: center;
-  gap: 4px;
   padding: 3px;
   border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--ink) 4%, transparent);
+  background: color-mix(in srgb, var(--ink) 5%, transparent);
 }
 
-.theme-swatch {
+.theme-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  width: 30px;
+  height: 26px;
   padding: 0;
-  border: 2px solid transparent;
-  border-radius: 6px;
+  border: none;
+  border-radius: 5px;
   background: transparent;
+  color: var(--muted);
   box-shadow: none;
   cursor: pointer;
-  overflow: hidden;
-  line-height: 0;
   transition:
-    border-color 0.15s ease,
-    transform 0.15s ease;
+    background 0.15s ease,
+    color 0.15s ease;
 }
 
-.theme-swatch:hover {
-  transform: none;
-  border-color: var(--line-strong);
+.theme-btn:hover {
+  color: var(--ink);
 }
 
-.theme-swatch.active {
-  border-color: var(--accent);
+.theme-btn.active {
+  background: var(--card);
+  color: var(--accent);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+}
+
+/* --- Outline panel: fix overflow --- */
+
+.demo-mindmap .mml-outline-wrapper {
+  flex-shrink: 0;
+}
+
+.demo-mindmap .mml-outline-toolbar {
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px;
+}
+
+.demo-mindmap .mml-outline-search {
+  flex: 1 1 100%;
+  order: -1;
+}
+
+.demo-mindmap .mml-outline-collapse-all,
+.demo-mindmap .mml-outline-expand-all {
+  flex: 1;
+  text-align: center;
+  font-size: 11px;
+  padding: 4px 6px;
 }
 
 /* --- Sidebar footer / rich text hint --- */
