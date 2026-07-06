@@ -224,16 +224,25 @@ function CanvasViewComponent({
   // Mousedown: start pan or node drag, attach document listeners
   const handleMouseDown = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
+      const target = e.target as HTMLElement
+      const nodeEl = target.closest('[data-node-id]')
+      const vp = viewportRef.current
+      const currentDoc = docRef.current
+
+      // P1 r2: If clicking inside an actively edited node, let TipTap
+      // handle native focus/caret — don't preventDefault or start drag.
+      if (nodeEl) {
+        const clickedId = nodeEl.getAttribute('data-node-id')
+        if (clickedId && clickedId === editingNodeId) {
+          return
+        }
+      }
+
       // F1: Prevent default to stop native text selection and drag-and-drop
       // that would suppress mousemove events in real browsers.
       e.preventDefault()
       // P2: Explicitly focus canvas since preventDefault blocks native focus
       containerRef.current?.focus()
-
-      const target = e.target as HTMLElement
-      const nodeEl = target.closest('[data-node-id]')
-      const vp = viewportRef.current
-      const currentDoc = docRef.current
 
       if (nodeEl) {
         const nodeId = nodeEl.getAttribute('data-node-id')
