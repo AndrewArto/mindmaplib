@@ -117,4 +117,39 @@ describe('useKeyboard', () => {
     expect(state.doc.nodes[doc.rootId].collapsed).toBe(false)
     expect(state.selectedNodeId).toBe(childId)
   })
+
+  it('reapplies auto layout after inserting a child', () => {
+    const doc = createDoc('Test')
+    const editor = new MindmapEditor(doc)
+    editor.addChild(doc.rootId)
+    editor.setLayout('tree-horizontal')
+    editor.select(doc.rootId)
+    const exitRef = createRef<(() => void) | null>()
+    const { result } = renderHook(() => useKeyboard(editor, exitRef))
+
+    act(() => {
+      result.current.onKeyDown(makeKbEvent('Tab'))
+    })
+
+    const childIds = editor.getDoc().nodes[doc.rootId].childOrder
+    const newId = childIds[childIds.length - 1]
+    expect(editor.getDoc().nodes[newId].position).not.toBeNull()
+  })
+
+  it('deletes non-root subtrees when no confirmation callback is provided', async () => {
+    const doc = createDoc('Test')
+    const editor = new MindmapEditor(doc)
+    const childId = editor.addChild(doc.rootId)
+    editor.addChild(childId)
+    editor.select(childId)
+    const exitRef = createRef<(() => void) | null>()
+    const { result } = renderHook(() => useKeyboard(editor, exitRef))
+
+    act(() => {
+      result.current.onKeyDown(makeKbEvent('Delete'))
+    })
+
+    await Promise.resolve()
+    expect(editor.getDoc().nodes[childId]).toBeUndefined()
+  })
 })

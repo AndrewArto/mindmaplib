@@ -10,6 +10,7 @@ import type {
   MindmapDoc,
   MindmapStore,
   NodeContent,
+  SaveResult,
   Position,
   Transaction,
 } from './types.js'
@@ -273,15 +274,21 @@ export class MindmapEditor {
     return this.doc.version !== this.lastSavedVersion
   }
 
-  async save(): Promise<void> {
-    if (!this.store) return
+  async save(): Promise<SaveResult | undefined> {
+    if (!this.store) return undefined
     const savingVersion = this.doc.version
     const result = await this.store.save(this.doc, {
       expectedVersion: this.lastSavedVersion,
     })
     if (result.saved) {
       this.lastSavedVersion = savingVersion
+      return result
     }
+    throw new Error(
+      result.conflict
+        ? `Save conflict: server is at version ${result.currentVersion ?? 'unknown'}`
+        : 'Save failed',
+    )
   }
 
   async load(docId: string): Promise<void> {

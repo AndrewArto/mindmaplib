@@ -73,4 +73,23 @@ describe('CanvasView pan/zoom', () => {
     expect(viewport.style.transform).toContain('translate')
     expect(viewport.style.transform).toContain('scale')
   })
+
+  it('dragging a node updates its position', () => {
+    const doc = createDoc('Test')
+    const editor = new MindmapEditor(doc)
+    editor.setLayout('tree-horizontal')
+    const nodeId = editor.getDoc().rootId
+    const before = editor.getDoc().nodes[nodeId].position
+    const { container } = render(<Mindmap editor={editor} />)
+    const node = container.querySelector(
+      `[data-node-id="${nodeId}"]`,
+    ) as HTMLElement
+    const canvas = container.querySelector('.mml-canvas') as HTMLElement
+
+    fireEvent.mouseDown(node, { clientX: 10, clientY: 10 })
+    fireEvent.mouseMove(canvas, { clientX: 80, clientY: 60 })
+    fireEvent.mouseUp(canvas)
+
+    expect(editor.getDoc().nodes[nodeId].position).not.toEqual(before)
+  })
 })

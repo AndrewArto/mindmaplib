@@ -95,9 +95,7 @@ function NodeViewComponent({
         left: `${node.position?.x ?? 0}px`,
         top: `${node.position?.y ?? 0}px`,
       }}
-      onMouseDown={(e) => {
-        // Prevent background pan when clicking a node
-        e.stopPropagation()
+      onMouseDown={() => {
         editor.select(node.id)
       }}
       onDoubleClick={(e) => {

@@ -263,6 +263,18 @@ describe('MindmapEditor store integration', () => {
     expect(editor2.getDoc().meta.title).toBe('M')
     expect(editor2.canUndo()).toBe(false)
   })
+
+  it('throws when the store reports a save conflict', async () => {
+    const store = new InMemoryStore()
+    const doc = createDoc('M')
+    const editor = new MindmapEditor(doc, { store })
+    await editor.save()
+    editor.addChild(doc.rootId)
+    await store.save({ ...editor.getDoc(), version: 99 })
+
+    await expect(editor.save()).rejects.toThrow('Save conflict')
+    expect(editor.isDirty()).toBe(true)
+  })
 })
 
 describe('MindmapEditor layout', () => {

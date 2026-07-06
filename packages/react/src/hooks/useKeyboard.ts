@@ -7,7 +7,7 @@
 
 import { useCallback } from 'react'
 import type { KeyboardEvent } from 'react'
-import type { MindmapEditor, MindmapNode } from '@mindmaplib/core'
+import type { LayoutMode, MindmapEditor, MindmapNode } from '@mindmaplib/core'
 import { getChildren } from '@mindmaplib/core'
 import type { KeyboardHandlers } from '../types.js'
 
@@ -19,8 +19,14 @@ async function resolveConfirm(
   fn: ((node: MindmapNode) => Promise<boolean> | boolean) | undefined,
   node: MindmapNode,
 ): Promise<boolean> {
-  if (!fn) return false
+  if (!fn) return true
   return await fn(node)
+}
+
+function relayoutIfAutoMode(editor: MindmapEditor, mode: LayoutMode): void {
+  if (mode !== 'free-float') {
+    editor.setLayout(mode)
+  }
 }
 
 export function useKeyboard(
@@ -83,8 +89,10 @@ export function useKeyboard(
         case 'Tab': {
           if (e.shiftKey) {
             editor.promoteNode(selectedId)
+            relayoutIfAutoMode(editor, state.layoutMode)
           } else {
             const newId = editor.addChild(selectedId)
+            relayoutIfAutoMode(editor, state.layoutMode)
             editor.startEditing(newId)
           }
           e.preventDefault()
@@ -93,6 +101,7 @@ export function useKeyboard(
         case 'Enter': {
           if (selected.parentId === null) return
           const newId = editor.addSibling(selectedId)
+          relayoutIfAutoMode(editor, state.layoutMode)
           editor.startEditing(newId)
           e.preventDefault()
           break
