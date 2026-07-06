@@ -238,13 +238,14 @@ function CanvasViewComponent({
 
       // B3 (MML-B-0011): If editing a different node, exit edit mode first
       // (click-away). This persists content before starting drag/pan.
-      // Fallback: if exitEditModeRef is null (editing component unmounted),
-      // call editor.stopEditing() directly to clear stale editingNodeId.
+      // After calling the exit function, verify editingNodeId was actually
+      // cleared — the exit function may be stale (persistedRef already true
+      // from a previous node) or the editing component may not have mounted
+      // yet. Force-clear to prevent stuck editingNodeId.
       if (editingNodeIdRef.current) {
         const exitFn = exitEditModeRef.current
-        if (exitFn) {
-          exitFn()
-        } else {
+        if (exitFn) exitFn()
+        if (editor.getState().editingNodeId !== null) {
           editor.stopEditing()
         }
       }
