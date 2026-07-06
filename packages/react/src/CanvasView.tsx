@@ -73,6 +73,8 @@ function CanvasViewComponent({
   viewportRef.current = state.viewport
   const docRef = useRef(state.doc)
   docRef.current = state.doc
+  const editingNodeIdRef = useRef(state.editingNodeId)
+  editingNodeIdRef.current = state.editingNodeId
   const keyboard = useKeyboard(editor, exitEditModeRef, confirmDelete)
   useNodeMeasures(editor, containerRef)
 
@@ -233,7 +235,7 @@ function CanvasViewComponent({
       // handle native focus/caret — don't preventDefault or start drag.
       if (nodeEl) {
         const clickedId = nodeEl.getAttribute('data-node-id')
-        if (clickedId && clickedId === editingNodeId) {
+        if (clickedId && clickedId === editingNodeIdRef.current) {
           return
         }
       }
