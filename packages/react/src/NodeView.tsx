@@ -118,7 +118,10 @@ function NodeViewComponent({
         left: `${node.position?.x ?? 0}px`,
         top: `${node.position?.y ?? 0}px`,
       }}
-      onMouseDown={() => {
+      onMouseDown={(e) => {
+        // F1/F5: Prevent native drag on node content. Let event bubble
+        // so canvas handleMouseDown can start node drag.
+        e.preventDefault()
         editor.select(node.id)
       }}
       onDoubleClick={(e) => {

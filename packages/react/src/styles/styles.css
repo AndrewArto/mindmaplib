@@ -40,6 +40,10 @@
   cursor: grab;
   outline: none;
   background: var(--mml-bg);
+  /* F2: Prevent native text selection during pan/drag (MML-B-0010) */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-user-drag: none;
 }
 
 .mml-canvas:active {
