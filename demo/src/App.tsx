@@ -7,6 +7,14 @@ import type {
 } from '@mindmaplib/core'
 import { MindmapEditor as CoreMindmapEditor } from '@mindmaplib/core'
 import { D1Store } from './d1store'
+import {
+  LayoutIcon,
+  layoutLabel,
+  IconFit,
+  IconUndo,
+  IconRedo,
+  IconPanelToggle,
+} from './icons'
 import { createSampleDoc } from './sample'
 
 type ThemeName = 'triplea' | 'triplea-dark'
@@ -250,26 +258,51 @@ export function App(): React.ReactElement {
                 <button
                   key={mode}
                   type="button"
-                  className={layout === mode ? 'active' : ''}
+                  className={`icon-button ${layout === mode ? 'active' : ''}`}
+                  title={layoutLabel(mode)}
+                  aria-label={layoutLabel(mode)}
                   onClick={() => applyLayout(mode)}
                 >
-                  {mode.replace('tree-', '')}
+                  <LayoutIcon mode={mode} />
                 </button>
               ))}
-              <button type="button" onClick={() => editor.fitToScreen()}>
-                Fit
-              </button>
-              <button type="button" onClick={() => editor.undo()}>
-                Undo
-              </button>
-              <button type="button" onClick={() => editor.redo()}>
-                Redo
+              <span className="toolbar-divider" />
+              <button
+                type="button"
+                className="icon-button"
+                title="Fit to screen"
+                aria-label="Fit to screen"
+                onClick={() => editor.fitToScreen()}
+              >
+                <IconFit />
               </button>
               <button
                 type="button"
+                className="icon-button"
+                title="Undo"
+                aria-label="Undo"
+                onClick={() => editor.undo()}
+              >
+                <IconUndo />
+              </button>
+              <button
+                type="button"
+                className="icon-button"
+                title="Redo"
+                aria-label="Redo"
+                onClick={() => editor.redo()}
+              >
+                <IconRedo />
+              </button>
+              <span className="toolbar-divider" />
+              <button
+                type="button"
+                className="icon-button"
+                title={showOutline ? 'Hide outline' : 'Show outline'}
+                aria-label={showOutline ? 'Hide outline' : 'Show outline'}
                 onClick={() => setShowOutline((value) => !value)}
               >
-                {showOutline ? 'Hide outline' : 'Show outline'}
+                <IconPanelToggle />
               </button>
             </div>
           </div>
