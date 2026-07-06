@@ -32,9 +32,8 @@ export function useNodeMeasures(
       pendingMeasures.current = {}
       // Merge into known measures
       knownMeasures.current = { ...knownMeasures.current, ...measures }
-      // The adapter uses measures in layout computation via computeLayoutOps.
-      // For now, we store them so the adapter can read them when computing layout.
-      // Core does not have a setNodeMeasures API yet, so we keep them in the hook.
+      // Push to editor for layout (MML-B-0011)
+      editor.setNodeMeasures({ ...knownMeasures.current })
     }
 
     const debouncedFlush = () => {
@@ -98,11 +97,4 @@ export function useNodeMeasures(
       mutationObserver.disconnect()
     }
   }, [containerRef, editor])
-
-  // Expose known measures via a stable ref on the editor for layout use
-  // This is a lightweight bridge — the adapter reads measures when computing layout
-  if (typeof editor !== 'undefined') {
-    ;(editor as unknown as { __nodeMeasures?: NodeMeasures }).__nodeMeasures =
-      knownMeasures.current
-  }
 }

@@ -13,6 +13,7 @@ import type {
   SaveResult,
   Position,
   Transaction,
+  NodeMeasures,
 } from './types.js'
 import { MindmapError } from './errors.js'
 import { createId } from './id.js'
@@ -50,6 +51,7 @@ export class MindmapEditor {
     zoom: 1,
   }
   private layoutMode: LayoutMode = 'free-float'
+  private nodeMeasures: NodeMeasures = {}
 
   private undoStack: MindmapDoc[] = []
   private redoStack: MindmapDoc[] = []
@@ -280,12 +282,45 @@ export class MindmapEditor {
 
   setLayout(mode: LayoutMode): void {
     this.layoutMode = mode
-    const ops = computeLayoutOps(this.doc, mode)
+    const ops = computeLayoutOps(this.doc, mode, {
+      nodeMeasures: this.nodeMeasures,
+    })
     if (ops.length > 0) {
       this.apply(buildTransaction(this.doc, ops))
     } else {
       this.notify()
     }
+  }
+
+  /**
+   * Store measured node sizes and trigger relayout if in auto-layout mode.
+   * Called by the React adapter's ResizeObserver pipeline.
+   * Guard: only relayout when max dimensions actually changed (avoids loops).
+   */
+  setNodeMeasures(measures: NodeMeasures): void {
+    const prev = this.nodeMeasures
+    this.nodeMeasures = measures
+    if (this.layoutMode === 'free-float') return
+    // Skip relayout if effective max dimensions are unchanged
+    const prevVals = Object.values(prev)
+    const newVals = Object.values(measures)
+    if (prevVals.length > 0 && newVals.length > 0) {
+      const prevMaxW = Math.max(...prevVals.map((m) => m.width))
+      const prevMaxH = Math.max(...prevVals.map((m) => m.height))
+      const newMaxW = Math.max(...newVals.map((m) => m.width))
+      const newMaxH = Math.max(...newVals.map((m) => m.height))
+      if (prevMaxW === newMaxW && prevMaxH === newMaxH) return
+    }
+    const ops = computeLayoutOps(this.doc, this.layoutMode, {
+      nodeMeasures: this.nodeMeasures,
+    })
+    if (ops.length > 0) {
+      this.apply(buildTransaction(this.doc, ops))
+    }
+  }
+
+  getNodeMeasures(): NodeMeasures {
+    return this.nodeMeasures
   }
 
   // --- Undo / redo -----------------------------------------------------

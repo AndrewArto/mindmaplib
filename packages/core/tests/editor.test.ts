@@ -436,3 +436,110 @@ describe('MindmapEditor fitToScreen (C3 fix)', () => {
     expect(zoomLarge).toBeGreaterThan(zoomSmall)
   })
 })
+
+// =========================================================================
+// MML-B-0011: nodeMeasures in layout
+// =========================================================================
+
+describe('MML-B-0011: nodeMeasures in layout', () => {
+  it('setNodeMeasures stores and getNodeMeasures returns them', () => {
+    const editor = new MindmapEditor(createDoc('R'))
+    const m = { n1: { width: 200, height: 60 } }
+    editor.setNodeMeasures(m)
+    expect(editor.getNodeMeasures()).toEqual(m)
+  })
+
+  it('setLayout uses nodeMeasures for depth spacing (no parent overlap)', () => {
+    const doc = createDoc('Root')
+    const editor = new MindmapEditor(doc)
+    const rootId = doc.rootId
+    editor.addChild(rootId)
+
+    // Default: depth spacing = 120 + 40 = 160
+    editor.setLayout('tree-horizontal')
+    const childId = editor.getDoc().nodes[rootId]!.childOrder[0]!
+    const defaultX = editor.getDoc().nodes[childId]!.position!.x
+
+    // Wide nodes: depth spacing should be 200 + 40 = 240
+    editor.setNodeMeasures({
+      [rootId]: { width: 200, height: 40 },
+      [childId]: { width: 200, height: 40 },
+    })
+    editor.setLayout('tree-horizontal')
+
+    const wideX = editor.getDoc().nodes[childId]!.position!.x
+    expect(wideX).toBeGreaterThan(defaultX)
+    // Child x must exceed parent width so they don't overlap
+    expect(wideX).toBeGreaterThanOrEqual(200)
+  })
+
+  it('setLayout uses nodeMeasures for sibling spacing (no sibling overlap)', () => {
+    const doc = createDoc('Root')
+    const editor = new MindmapEditor(doc)
+    editor.addChild(doc.rootId)
+    editor.addChild(doc.rootId)
+
+    // Default sibling gap
+    editor.setLayout('tree-horizontal')
+    const childIds = editor.getDoc().nodes[doc.rootId]!.childOrder
+    const defaultGap = Math.abs(
+      editor.getDoc().nodes[childIds[1]]!.position!.y -
+        editor.getDoc().nodes[childIds[0]]!.position!.y,
+    )
+
+    // Taller nodes → bigger sibling spacing
+    editor.setNodeMeasures({
+      [childIds[0]]: { width: 120, height: 100 },
+      [childIds[1]]: { width: 120, height: 100 },
+    })
+    editor.setLayout('tree-horizontal')
+
+    const wideGap = Math.abs(
+      editor.getDoc().nodes[childIds[1]]!.position!.y -
+        editor.getDoc().nodes[childIds[0]]!.position!.y,
+    )
+    expect(wideGap).toBeGreaterThan(defaultGap)
+  })
+
+  it('setNodeMeasures triggers relayout in auto mode', () => {
+    const doc = createDoc('Root')
+    const editor = new MindmapEditor(doc)
+    editor.addChild(doc.rootId)
+    editor.addChild(doc.rootId)
+    editor.setLayout('tree-horizontal')
+
+    const childIds = editor.getDoc().nodes[doc.rootId]!.childOrder
+    const yGapBefore = Math.abs(
+      editor.getDoc().nodes[childIds[1]]!.position!.y -
+        editor.getDoc().nodes[childIds[0]]!.position!.y,
+    )
+
+    // Set taller measures — should trigger relayout with more sibling spacing
+    editor.setNodeMeasures({
+      [childIds[0]]: { width: 120, height: 100 },
+      [childIds[1]]: { width: 120, height: 100 },
+    })
+
+    const yGapAfter = Math.abs(
+      editor.getDoc().nodes[childIds[1]]!.position!.y -
+        editor.getDoc().nodes[childIds[0]]!.position!.y,
+    )
+    expect(yGapAfter).toBeGreaterThan(yGapBefore)
+  })
+
+  it('setNodeMeasures does NOT relayout in free-float', () => {
+    const doc = createDoc('Root')
+    const editor = new MindmapEditor(doc)
+    editor.addChild(doc.rootId)
+
+    const childId = editor.getDoc().nodes[doc.rootId]!.childOrder[0]!
+    const posBefore = editor.getDoc().nodes[childId]!.position
+
+    editor.setNodeMeasures({
+      [childId]: { width: 300, height: 80 },
+    })
+
+    const posAfter = editor.getDoc().nodes[childId]!.position
+    expect(posAfter).toEqual(posBefore)
+  })
+})

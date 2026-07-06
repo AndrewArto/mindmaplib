@@ -258,3 +258,57 @@ describe('CanvasView pan/zoom', () => {
     expect(afterUndo).toEqual(beforeDrag)
   })
 })
+
+// =========================================================================
+// MML-B-0011: Keyboard focus, edit click-away, content persistence
+// =========================================================================
+
+describe('MML-B-0011: focus and click-away', () => {
+  it('B2: mousedown on node focuses canvas', () => {
+    const doc = createDoc('Test')
+    const editor = new MindmapEditor(doc)
+    editor.setLayout('tree-horizontal')
+    const { container } = render(<Mindmap editor={editor} />)
+    const canvas = container.querySelector('.mml-canvas') as HTMLElement
+    const node = container.querySelector('[data-node-id]') as HTMLElement
+
+    fireEvent.mouseDown(node, { clientX: 10, clientY: 10 })
+    expect(document.activeElement).toBe(canvas)
+  })
+
+  it('B3: background mousedown exits edit mode (click-away)', () => {
+    const doc = createDoc('Test')
+    const editor = new MindmapEditor(doc)
+    editor.setLayout('tree-horizontal')
+    const nodeId = editor.addChild(doc.rootId)
+    editor.startEditing(nodeId)
+
+    expect(editor.getState().editingNodeId).toBe(nodeId)
+
+    const { container } = render(<Mindmap editor={editor} />)
+    const canvas = container.querySelector('.mml-canvas') as HTMLElement
+
+    // Click on background — should exit edit mode
+    fireEvent.mouseDown(canvas, { clientX: 500, clientY: 500 })
+
+    expect(editor.getState().editingNodeId).toBeNull()
+  })
+
+  it('B3b: clicking another node exits edit mode', () => {
+    const doc = createDoc('Test')
+    const editor = new MindmapEditor(doc)
+    editor.setLayout('tree-horizontal')
+    const id1 = editor.addChild(doc.rootId)
+    const id2 = editor.addChild(doc.rootId)
+    editor.startEditing(id1)
+
+    const { container } = render(<Mindmap editor={editor} />)
+    const otherNode = container.querySelector(
+      `[data-node-id="${id2}"]`,
+    ) as HTMLElement
+
+    fireEvent.mouseDown(otherNode, { clientX: 200, clientY: 200 })
+
+    expect(editor.getState().editingNodeId).toBeNull()
+  })
+})

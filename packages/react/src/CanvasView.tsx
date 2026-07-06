@@ -5,7 +5,6 @@
 // Node drag updates node position via editor.setPosition. Background drag pans.
 
 import { useRef, useCallback, useMemo, useEffect } from 'react'
-import type { NodeMeasures } from '@mindmaplib/core'
 import { useEditor } from './hooks/useEditor.js'
 import { useKeyboard } from './hooks/useKeyboard.js'
 import { useNodeMeasures } from './hooks/useNodeMeasures.js'
@@ -83,9 +82,7 @@ function CanvasViewComponent({
   const containerH = containerRef.current?.clientHeight ?? 600
 
   // Node measures for edge computation
-  const measures =
-    (editor as unknown as { __nodeMeasures?: NodeMeasures }).__nodeMeasures ??
-    {}
+  const measures = editor.getNodeMeasures()
 
   // Build edge list: parent -> child for all visible parent-child pairs
   const edges = useMemo(() => {
@@ -238,6 +235,13 @@ function CanvasViewComponent({
         if (clickedId && clickedId === editingNodeIdRef.current) {
           return
         }
+      }
+
+      // B3 (MML-B-0011): If editing a different node, exit edit mode first
+      // (click-away). This persists content before starting drag/pan.
+      if (editingNodeIdRef.current) {
+        const exitFn = exitEditModeRef.current
+        if (exitFn) exitFn()
       }
 
       // F1: Prevent default to stop native text selection and drag-and-drop
