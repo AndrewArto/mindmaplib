@@ -63,29 +63,29 @@ demo/
 
 ### What the demo owns (its responsibility)
 
-| Concern                        | Where                          | How                                                    |
-| ------------------------------ | ------------------------------ | ------------------------------------------------------ |
-| Session persistence            | `D1Store.ts`, `worker.ts`      | Implements `MindmapStore` interface from core          |
-| App shell (toolbar, buttons)   | `App.tsx`                      | React components wrapping `<Mindmap>`                  |
-| Session list UI                | `App.tsx`                      | Lists D1 sessions, new/load/delete                     |
-| Design tokens / styling        | `style.css`                    | CSS custom properties, passed to `<Mindmap>` via props |
-| Build & deploy pipeline        | `build-worker.mjs`, CF Pages   | Vite build + esbuild worker, CF Pages git integration  |
-| Auto-save orchestration        | `App.tsx`                      | Debounced `editor.save()` on state change              |
+| Concern                      | Where                        | How                                                    |
+| ---------------------------- | ---------------------------- | ------------------------------------------------------ |
+| Session persistence          | `D1Store.ts`, `worker.ts`    | Implements `MindmapStore` interface from core          |
+| App shell (toolbar, buttons) | `App.tsx`                    | React components wrapping `<Mindmap>`                  |
+| Session list UI              | `App.tsx`                    | Lists D1 sessions, new/load/delete                     |
+| Design tokens / styling      | `style.css`                  | CSS custom properties, passed to `<Mindmap>` via props |
+| Build & deploy pipeline      | `build-worker.mjs`, CF Pages | Vite build + esbuild worker, CF Pages git integration  |
+| Auto-save orchestration      | `App.tsx`                    | Debounced `editor.save()` on state change              |
 
 ### What the demo does NOT own (delegated to the library)
 
-| Concern                        | Owner                          | Demo usage                                             |
-| ------------------------------ | ------------------------------ | ------------------------------------------------------ |
-| Canvas rendering (SVG + HTML)  | `@mindmaplib/react`            | `<Mindmap>` component                                  |
-| Rich text editing (TipTap v3)  | `@mindmaplib/react`            | `<Mindmap>` component, managed internally              |
-| Node content ↔ HTML rendering  | `@mindmaplib/react` + TipTap   | `generateHTML()` with StarterKit extension list         |
-| HTML sanitization              | `@mindmaplib/react`            | DOMPurify on `generateHTML()` output                   |
-| Keyboard navigation            | `@mindmaplib/react`            | `useKeyboard` hook inside `<Mindmap>`                  |
-| Outline view                   | `@mindmaplib/react`            | `<Mindmap>` with `showOutline` prop                    |
-| Pan / zoom / viewport          | `@mindmaplib/react`            | `<Mindmap>` component                                  |
-| Layout computation             | `@mindmaplib/core`             | `editor.setLayout(mode)` → `computeLayoutOps`          |
-| Undo / redo                    | `@mindmaplib/core`             | `MindmapEditor` ring buffer                            |
-| Document model & transactions  | `@mindmaplib/core`             | `MindmapEditor`, `Transaction`, `TransactionOp`        |
+| Concern                       | Owner                        | Demo usage                                      |
+| ----------------------------- | ---------------------------- | ----------------------------------------------- |
+| Canvas rendering (SVG + HTML) | `@mindmaplib/react`          | `<Mindmap>` component                           |
+| Rich text editing (TipTap v3) | `@mindmaplib/react`          | `<Mindmap>` component, managed internally       |
+| Node content ↔ HTML rendering | `@mindmaplib/react` + TipTap | `generateHTML()` with StarterKit extension list |
+| HTML sanitization             | `@mindmaplib/react`          | DOMPurify on `generateHTML()` output            |
+| Keyboard navigation           | `@mindmaplib/react`          | `useKeyboard` hook inside `<Mindmap>`           |
+| Outline view                  | `@mindmaplib/react`          | `<Mindmap>` with `showOutline` prop             |
+| Pan / zoom / viewport         | `@mindmaplib/react`          | `<Mindmap>` component                           |
+| Layout computation            | `@mindmaplib/core`           | `editor.setLayout(mode)` → `computeLayoutOps`   |
+| Undo / redo                   | `@mindmaplib/core`           | `MindmapEditor` ring buffer                     |
+| Document model & transactions | `@mindmaplib/core`           | `MindmapEditor`, `Transaction`, `TransactionOp` |
 
 ### Integration point
 
