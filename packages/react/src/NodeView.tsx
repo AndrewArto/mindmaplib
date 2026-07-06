@@ -121,7 +121,11 @@ function NodeViewComponent({
       onMouseDown={(e) => {
         // F1/F5: Prevent native drag on node content. Let event bubble
         // so canvas handleMouseDown can start node drag.
-        e.preventDefault()
+        // But DON'T preventDefault when editing — TipTap needs native
+        // focus/caret placement inside contenteditable.
+        if (!isEditing) {
+          e.preventDefault()
+        }
         editor.select(node.id)
       }}
       onDoubleClick={(e) => {

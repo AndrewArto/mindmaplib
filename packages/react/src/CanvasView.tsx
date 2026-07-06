@@ -227,6 +227,8 @@ function CanvasViewComponent({
       // F1: Prevent default to stop native text selection and drag-and-drop
       // that would suppress mousemove events in real browsers.
       e.preventDefault()
+      // P2: Explicitly focus canvas since preventDefault blocks native focus
+      containerRef.current?.focus()
 
       const target = e.target as HTMLElement
       const nodeEl = target.closest('[data-node-id]')
