@@ -104,14 +104,14 @@ Do this once, when `demo/` is scaffolded and `pnpm --filter demo build` produces
    Connect to Git → `AndrewArto/mindmaplib`. Authorise the Cloudflare GitHub app.
 2. **Build configuration:**
 
-   | Setting                | Value                                                        |
-   | ---------------------- | ------------------------------------------------------------ |
-   | Production branch      | `main`                                                       |
-   | Framework preset       | `Vite`                                                       |
-   | Build command          | `pnpm install --frozen-lockfile && pnpm --filter demo build` |
-   | Build output directory | `demo/dist`                                                  |
-   | Root directory         | `/` (repo root, so pnpm-workspace.yaml is visible)           |
-   | Environment variable   | `NODE_VERSION=22` (matches `.nvmrc`)                         |
+   | Setting                | Value                                              |
+   | ---------------------- | -------------------------------------------------- |
+   | Production branch      | `main`                                             |
+   | Framework preset       | `Vite`                                             |
+   | Build command          | `pnpm install --frozen-lockfile && pnpm build`     |
+   | Build output directory | `demo/dist`                                        |
+   | Root directory         | `/` (repo root, so pnpm-workspace.yaml is visible) |
+   | Environment variable   | `NODE_VERSION=22` (matches `.nvmrc`)               |
 
    CF Pages reads `.nvmrc` for the Node version if present; setting
    `NODE_VERSION=22` is belt-and-suspenders.
@@ -160,7 +160,7 @@ If git integration is blocked or you need a manual deploy from the Mac mini:
 ```bash
 cd /Users/andery-mini/.openclaw/workspace/mindmaplib
 pnpm install --frozen-lockfile
-pnpm --filter demo build
+pnpm build
 # upload demo/dist to the pages project
 CLOUDFLARE_API_TOKEN="$CF_TOK" npx wrangler pages deploy demo/dist \
   --project-name mindmaplib-demo \
