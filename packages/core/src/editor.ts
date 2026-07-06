@@ -13,6 +13,7 @@ import type {
   SaveResult,
   Position,
   Transaction,
+  NodeMeasures,
 } from './types.js'
 import { MindmapError } from './errors.js'
 import { createId } from './id.js'
@@ -26,6 +27,7 @@ import {
   createSetPositionOp,
   createToggleCollapsedOp,
   createUpdateContentOp,
+  applyOp,
 } from './transactions.js'
 import { computeLayoutOps } from './layout.js'
 
@@ -50,6 +52,7 @@ export class MindmapEditor {
     zoom: 1,
   }
   private layoutMode: LayoutMode = 'free-float'
+  private nodeMeasures: NodeMeasures = {}
 
   private undoStack: MindmapDoc[] = []
   private redoStack: MindmapDoc[] = []
@@ -280,12 +283,60 @@ export class MindmapEditor {
 
   setLayout(mode: LayoutMode): void {
     this.layoutMode = mode
-    const ops = computeLayoutOps(this.doc, mode)
+    const ops = computeLayoutOps(this.doc, mode, {
+      nodeMeasures: this.nodeMeasures,
+    })
     if (ops.length > 0) {
       this.apply(buildTransaction(this.doc, ops))
     } else {
       this.notify()
     }
+  }
+
+  /**
+   * Store measured node sizes and trigger relayout if in auto-layout mode.
+   * Called by the React adapter's ResizeObserver pipeline.
+   *
+   * Stale entries (nodes no longer in the doc) are pruned so deleted nodes
+   * don't skew the max-size calculation. The relayout is applied silently
+   * (no undo entry, no version bump) because it's a background measurement
+   * update, not a user action.
+   */
+  setNodeMeasures(measures: NodeMeasures): void {
+    // P2 r1: Prune stale measures for nodes not in current doc
+    const filtered: NodeMeasures = {}
+    for (const [id, m] of Object.entries(measures)) {
+      if (this.doc.nodes[id]) filtered[id] = m
+    }
+    const prev = this.nodeMeasures
+    this.nodeMeasures = filtered
+    if (this.layoutMode === 'free-float') return
+    // Skip relayout if effective max dimensions are unchanged
+    const prevVals = Object.values(prev)
+    const newVals = Object.values(filtered)
+    if (prevVals.length > 0 && newVals.length > 0) {
+      const prevMaxW = Math.max(...prevVals.map((m) => m.width))
+      const prevMaxH = Math.max(...prevVals.map((m) => m.height))
+      const newMaxW = Math.max(...newVals.map((m) => m.width))
+      const newMaxH = Math.max(...newVals.map((m) => m.height))
+      if (prevMaxW === newMaxW && prevMaxH === newMaxH) return
+    }
+    // P2 r1: Silent relayout — no undo entry, no version bump
+    const ops = computeLayoutOps(this.doc, this.layoutMode, {
+      nodeMeasures: this.nodeMeasures,
+    })
+    if (ops.length > 0) {
+      let next = this.doc
+      for (const op of ops) {
+        next = applyOp(next, op)
+      }
+      this.doc = next
+      this.notify()
+    }
+  }
+
+  getNodeMeasures(): NodeMeasures {
+    return this.nodeMeasures
   }
 
   // --- Undo / redo -----------------------------------------------------

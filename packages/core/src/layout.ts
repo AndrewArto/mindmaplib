@@ -43,10 +43,14 @@ export function computeLayoutOps(
 
   // If nodeMeasures are provided, derive effective sizes from the max
   // measured dimensions so spacing adapts to actual node sizes.
+  // P2 r2: Filter out measures for nodes not in the current doc (stale entries
+  // after deletion or document load) to prevent corrupted spacing.
   const measures = options?.nodeMeasures
   let effectiveSize = defaultNodeSize
   if (measures) {
-    const vals = Object.values(measures)
+    const vals = Object.entries(measures)
+      .filter(([id]) => doc.nodes[id])
+      .map(([, m]) => m)
     if (vals.length > 0) {
       effectiveSize = {
         width: Math.max(

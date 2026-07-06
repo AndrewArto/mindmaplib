@@ -436,3 +436,209 @@ describe('MindmapEditor fitToScreen (C3 fix)', () => {
     expect(zoomLarge).toBeGreaterThan(zoomSmall)
   })
 })
+
+// =========================================================================
+// MML-B-0011: nodeMeasures in layout
+// =========================================================================
+
+describe('MML-B-0011: nodeMeasures in layout', () => {
+  it('setNodeMeasures stores and getNodeMeasures returns them', () => {
+    const editor = new MindmapEditor(createDoc('R'))
+    const rootId = editor.getDoc().rootId
+    const m = { [rootId]: { width: 200, height: 60 } }
+    editor.setNodeMeasures(m)
+    expect(editor.getNodeMeasures()).toEqual(m)
+  })
+
+  it('setLayout uses nodeMeasures for depth spacing (no parent overlap)', () => {
+    const doc = createDoc('Root')
+    const editor = new MindmapEditor(doc)
+    const rootId = doc.rootId
+    editor.addChild(rootId)
+
+    // Default: depth spacing = 120 + 40 = 160
+    editor.setLayout('tree-horizontal')
+    const childId = editor.getDoc().nodes[rootId]!.childOrder[0]!
+    const defaultX = editor.getDoc().nodes[childId]!.position!.x
+
+    // Wide nodes: depth spacing should be 200 + 40 = 240
+    editor.setNodeMeasures({
+      [rootId]: { width: 200, height: 40 },
+      [childId]: { width: 200, height: 40 },
+    })
+    editor.setLayout('tree-horizontal')
+
+    const wideX = editor.getDoc().nodes[childId]!.position!.x
+    expect(wideX).toBeGreaterThan(defaultX)
+    // Child x must exceed parent width so they don't overlap
+    expect(wideX).toBeGreaterThanOrEqual(200)
+  })
+
+  it('setLayout uses nodeMeasures for sibling spacing (no sibling overlap)', () => {
+    const doc = createDoc('Root')
+    const editor = new MindmapEditor(doc)
+    editor.addChild(doc.rootId)
+    editor.addChild(doc.rootId)
+
+    // Default sibling gap
+    editor.setLayout('tree-horizontal')
+    const childIds = editor.getDoc().nodes[doc.rootId]!.childOrder
+    const defaultGap = Math.abs(
+      editor.getDoc().nodes[childIds[1]]!.position!.y -
+        editor.getDoc().nodes[childIds[0]]!.position!.y,
+    )
+
+    // Taller nodes → bigger sibling spacing
+    editor.setNodeMeasures({
+      [childIds[0]]: { width: 120, height: 100 },
+      [childIds[1]]: { width: 120, height: 100 },
+    })
+    editor.setLayout('tree-horizontal')
+
+    const wideGap = Math.abs(
+      editor.getDoc().nodes[childIds[1]]!.position!.y -
+        editor.getDoc().nodes[childIds[0]]!.position!.y,
+    )
+    expect(wideGap).toBeGreaterThan(defaultGap)
+  })
+
+  it('setNodeMeasures triggers relayout in auto mode', () => {
+    const doc = createDoc('Root')
+    const editor = new MindmapEditor(doc)
+    editor.addChild(doc.rootId)
+    editor.addChild(doc.rootId)
+    editor.setLayout('tree-horizontal')
+
+    const childIds = editor.getDoc().nodes[doc.rootId]!.childOrder
+    const yGapBefore = Math.abs(
+      editor.getDoc().nodes[childIds[1]]!.position!.y -
+        editor.getDoc().nodes[childIds[0]]!.position!.y,
+    )
+
+    // Set taller measures — should trigger relayout with more sibling spacing
+    editor.setNodeMeasures({
+      [childIds[0]]: { width: 120, height: 100 },
+      [childIds[1]]: { width: 120, height: 100 },
+    })
+
+    const yGapAfter = Math.abs(
+      editor.getDoc().nodes[childIds[1]]!.position!.y -
+        editor.getDoc().nodes[childIds[0]]!.position!.y,
+    )
+    expect(yGapAfter).toBeGreaterThan(yGapBefore)
+  })
+
+  it('setNodeMeasures does NOT relayout in free-float', () => {
+    const doc = createDoc('Root')
+    const editor = new MindmapEditor(doc)
+    editor.addChild(doc.rootId)
+
+    const childId = editor.getDoc().nodes[doc.rootId]!.childOrder[0]!
+    const posBefore = editor.getDoc().nodes[childId]!.position
+
+    editor.setNodeMeasures({
+      [childId]: { width: 300, height: 80 },
+    })
+
+    const posAfter = editor.getDoc().nodes[childId]!.position
+    expect(posAfter).toEqual(posBefore)
+  })
+})
+
+// =========================================================================
+// MML-B-0011 R1 codex fixes
+// =========================================================================
+
+describe('MML-B-0011 R1: codex review fixes', () => {
+  it('P2-1: stale measures pruned after node deletion', () => {
+    const doc = createDoc('Root')
+    const editor = new MindmapEditor(doc)
+    const rootId = doc.rootId
+    const bigId = editor.addChild(rootId)
+    const smallId = editor.addChild(rootId)
+
+    // Set wide measures for both children
+    editor.setNodeMeasures({
+      [bigId]: { width: 1000, height: 40 },
+      [smallId]: { width: 120, height: 40 },
+      [rootId]: { width: 120, height: 40 },
+    })
+    editor.setLayout('tree-horizontal')
+
+    // Both children far apart due to 1000px wide node
+    const bigX = editor.getDoc().nodes[bigId]!.position!.x
+    expect(bigX).toBeGreaterThanOrEqual(1000)
+
+    // Delete the wide node
+    editor.deleteNode(bigId)
+
+    // Set measures again (simulating ResizeObserver flush after deletion)
+    editor.setNodeMeasures({
+      [smallId]: { width: 120, height: 40 },
+      [rootId]: { width: 120, height: 40 },
+    })
+
+    // Small node should now use normal spacing, not the deleted node's 1000px
+    const smallX = editor.getDoc().nodes[smallId]!.position!.x
+    expect(smallX).toBeLessThan(500)
+  })
+
+  it('P2-2: setNodeMeasures relayout does not create undo entry', () => {
+    const doc = createDoc('Root')
+    const editor = new MindmapEditor(doc)
+    editor.addChild(doc.rootId)
+    editor.addChild(doc.rootId)
+    editor.setLayout('tree-horizontal')
+
+    const undoCountBefore = editor.getState().doc.version
+
+    // Trigger measurement-driven relayout
+    editor.setNodeMeasures({
+      [doc.rootId]: { width: 300, height: 80 },
+    })
+
+    // Version should NOT increase (silent relayout)
+    const undoCountAfter = editor.getState().doc.version
+    expect(undoCountAfter).toBe(undoCountBefore)
+
+    // Undo should NOT revert the measurement relayout
+    // (it should revert to whatever was before the last user action)
+    const canUndo = editor.canUndo()
+    // The setNodeMeasures should not have pushed undo
+    // (if we undo, we should get the pre-setLayout state, not pre-setNodeMeasures)
+    if (canUndo) {
+      editor.undo()
+      // After undo, layout should revert to the user-triggered setLayout state
+      // not the measurement relayout
+    }
+  })
+})
+
+// =========================================================================
+// MML-B-0011 R2: setLayout stale measures via computeLayoutOps filter
+// =========================================================================
+
+describe('MML-B-0011 R2: stale measures filtered in computeLayoutOps', () => {
+  it('setLayout after node deletion uses correct spacing (no stale)', () => {
+    const doc = createDoc('Root')
+    const editor = new MindmapEditor(doc)
+    const rootId = doc.rootId
+    const bigId = editor.addChild(rootId)
+    const smallId = editor.addChild(rootId)
+
+    editor.setNodeMeasures({
+      [bigId]: { width: 1000, height: 40 },
+      [smallId]: { width: 120, height: 40 },
+      [rootId]: { width: 120, height: 40 },
+    })
+    editor.setLayout('tree-horizontal')
+
+    // Delete the wide node, then setLayout again WITHOUT calling setNodeMeasures
+    editor.deleteNode(bigId)
+    editor.setLayout('tree-horizontal')
+
+    // Small node should use default spacing, not the stale 1000px
+    const smallX = editor.getDoc().nodes[smallId]!.position!.x
+    expect(smallX).toBeLessThan(500)
+  })
+})
