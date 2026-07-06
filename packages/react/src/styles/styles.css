@@ -1,0 +1,301 @@
+/* mindmaplib React adapter — default styles */
+
+:root {
+  --mml-bg: #ffffff;
+  --mml-text: #1a1a1a;
+  --mml-border: #e0e0e0;
+  --mml-accent: #3b82f6;
+  --mml-drop-bg: rgba(59, 130, 246, 0.08);
+  --mml-grid-color: #e5e5e5;
+  --mml-node-bg: #ffffff;
+  --mml-node-border: #d0d0d0;
+  --mml-node-selected-border: #3b82f6;
+  --mml-node-selected-bg: #eff6ff;
+  --mml-node-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  --mml-edge-color: #b0b0b0;
+  --mml-edge-selected-color: #3b82f6;
+  --mml-outline-bg: #fafafa;
+  --mml-outline-item-selected: #eff6ff;
+  --mml-outline-item-focused: #e0e7ff;
+  --mml-outline-toggle: #999;
+  --mml-outline-excerpt-empty: #aaa;
+  --mml-outline-search-match: #fef08a;
+  --mml-outline-indent: 20px;
+}
+
+/* Container */
+.mml-container {
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--mml-bg);
+  color: var(--mml-text);
+}
+
+/* Canvas */
+.mml-canvas {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+  cursor: grab;
+  outline: none;
+  background: var(--mml-bg);
+}
+
+.mml-canvas:active {
+  cursor: grabbing;
+}
+
+.mml-canvas-viewport {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+}
+
+/* Background grid */
+.mml-background-grid {
+  pointer-events: none;
+}
+
+/* Edges */
+.mml-edge {
+  stroke: var(--mml-edge-color);
+  stroke-width: 2;
+  fill: none;
+  pointer-events: none;
+}
+
+.mml-edge--selected {
+  stroke: var(--mml-edge-selected-color);
+  stroke-width: 3;
+}
+
+/* Nodes */
+.mml-node {
+  position: absolute;
+  background: var(--mml-node-bg);
+  border: 1px solid var(--mml-node-border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  box-shadow: var(--mml-node-shadow);
+  cursor: pointer;
+  user-select: none;
+  max-width: 300px;
+  min-width: 40px;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.mml-node:hover {
+  border-color: var(--mml-accent);
+}
+
+.mml-node--selected {
+  border-color: var(--mml-node-selected-border);
+  background: var(--mml-node-selected-bg);
+  box-shadow: 0 0 0 2px var(--mml-accent);
+}
+
+.mml-node--editing {
+  border-color: var(--mml-accent);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+}
+
+.mml-node-content {
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.mml-node-content p {
+  margin: 0;
+}
+
+.mml-node-content h1 {
+  font-size: 1.4em;
+  margin: 0.2em 0;
+}
+.mml-node-content h2 {
+  font-size: 1.2em;
+  margin: 0.2em 0;
+}
+.mml-node-content h3 {
+  font-size: 1.1em;
+  margin: 0.2em 0;
+}
+.mml-node-content ul,
+.mml-node-content ol {
+  margin: 0.2em 0;
+  padding-left: 1.5em;
+}
+.mml-node-content pre {
+  margin: 0.2em 0;
+  padding: 4px 6px;
+  background: #f5f5f5;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+.mml-node-content code {
+  font-family: 'SF Mono', Monaco, monospace;
+  font-size: 0.85em;
+}
+.mml-node-content a {
+  color: var(--mml-accent);
+  text-decoration: underline;
+}
+
+/* TipTap editing content */
+.mml-node-content--editing {
+  outline: none;
+}
+
+.mml-node-content--editing .ProseMirror {
+  outline: none;
+  min-height: 20px;
+}
+
+.mml-node-content--editing .ProseMirror:focus {
+  outline: none;
+}
+
+/* Outline */
+.mml-outline {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--mml-outline-bg);
+}
+
+.mml-outline-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border-bottom: 1px solid var(--mml-border);
+  flex-shrink: 0;
+}
+
+.mml-outline-search {
+  flex: 1;
+  padding: 4px 8px;
+  border: 1px solid var(--mml-border);
+  border-radius: 4px;
+  font-size: 13px;
+  outline: none;
+}
+
+.mml-outline-search:focus {
+  border-color: var(--mml-accent);
+}
+
+.mml-outline-collapse-all,
+.mml-outline-expand-all {
+  padding: 4px 8px;
+  border: 1px solid var(--mml-border);
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.mml-outline-collapse-all:hover,
+.mml-outline-expand-all:hover {
+  border-color: var(--mml-accent);
+}
+
+.mml-outline-tree {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+  outline: none;
+}
+
+.mml-outline-item {
+  padding-left: calc(
+    var(--mml-outline-indent, 20px) * (var(--mml-level, 1) - 1)
+  );
+  border-bottom: 1px solid transparent;
+  border-top: 1px solid transparent;
+  transition: background-color 0.1s ease;
+}
+
+.mml-outline-item--selected {
+  background: var(--mml-outline-item-selected);
+}
+
+.mml-outline-item--focused {
+  background: var(--mml-outline-item-focused);
+}
+
+.mml-outline-item--selected.mml-outline-item--focused {
+  background: var(--mml-outline-item-selected);
+  box-shadow: inset 3px 0 0 var(--mml-accent);
+}
+
+.mml-outline-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.mml-outline-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 10px;
+  color: var(--mml-outline-toggle);
+  padding: 0;
+  width: 16px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mml-outline-toggle:hover {
+  color: var(--mml-accent);
+}
+
+.mml-outline-excerpt {
+  flex: 1;
+  font-size: 13px;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mml-outline-excerpt--empty {
+  color: var(--mml-outline-excerpt-empty);
+  font-style: italic;
+}
+
+.mml-outline-search-match {
+  background: var(--mml-outline-search-match);
+}
+
+.mml-outline-badge {
+  font-size: 11px;
+  color: #888;
+  background: #eee;
+  border-radius: 8px;
+  padding: 1px 6px;
+  flex-shrink: 0;
+}
+
+/* Drop indicators */
+.mml-outline-drop--before {
+  border-top: 2px solid var(--mml-accent);
+}
+
+.mml-outline-drop--after {
+  border-bottom: 2px solid var(--mml-accent);
+}
+
+.mml-outline-drop--inside {
+  background: var(--mml-drop-bg);
+}

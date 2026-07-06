@@ -22,8 +22,15 @@ module.exports = {
       severity: 'error',
       from: { path: '^packages/core/' },
       to: {
-        path: 'node_modules/(react|react-dom|@tiptap)',
+        path: 'node_modules/.*(@tiptap|react|react-dom)',
       },
+    },
+    {
+      name: 'react-reaches-into-demo',
+      comment: 'packages/react must not import anything from demo/',
+      severity: 'error',
+      from: { path: '^packages/react/' },
+      to: { path: '^demo/' },
     },
   ],
   options: {
