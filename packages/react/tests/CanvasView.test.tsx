@@ -35,8 +35,8 @@ describe('CanvasView pan/zoom', () => {
     ) as HTMLElement
     const initialX = editor.getState().viewport.x
     fireEvent.mouseDown(viewport, { clientX: 100, clientY: 100 })
-    fireEvent.mouseMove(viewport, { clientX: 150, clientY: 120 })
-    fireEvent.mouseUp(viewport)
+    fireEvent.mouseMove(document, { clientX: 150, clientY: 120 })
+    fireEvent.mouseUp(document)
     expect(editor.getState().viewport.x).not.toBe(initialX)
   })
 
@@ -107,8 +107,8 @@ describe('CanvasView pan/zoom', () => {
 
     // mousedown on the SVG edge layer (child of viewport, no data-node-id)
     fireEvent.mouseDown(edgeLayer, { clientX: 100, clientY: 100 })
-    fireEvent.mouseMove(edgeLayer, { clientX: 150, clientY: 120 })
-    fireEvent.mouseUp(edgeLayer)
+    fireEvent.mouseMove(document, { clientX: 150, clientY: 120 })
+    fireEvent.mouseUp(document)
 
     expect(editor.getState().viewport.x).not.toBe(initialX)
   })
@@ -124,8 +124,8 @@ describe('CanvasView pan/zoom', () => {
     const initialX = editor.getState().viewport.x
 
     fireEvent.mouseDown(nodesLayer, { clientX: 200, clientY: 200 })
-    fireEvent.mouseMove(nodesLayer, { clientX: 250, clientY: 230 })
-    fireEvent.mouseUp(nodesLayer)
+    fireEvent.mouseMove(document, { clientX: 250, clientY: 230 })
+    fireEvent.mouseUp(document)
 
     expect(editor.getState().viewport.x).not.toBe(initialX)
   })
