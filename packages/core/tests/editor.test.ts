@@ -613,3 +613,32 @@ describe('MML-B-0011 R1: codex review fixes', () => {
     }
   })
 })
+
+// =========================================================================
+// MML-B-0011 R2: setLayout stale measures via computeLayoutOps filter
+// =========================================================================
+
+describe('MML-B-0011 R2: stale measures filtered in computeLayoutOps', () => {
+  it('setLayout after node deletion uses correct spacing (no stale)', () => {
+    const doc = createDoc('Root')
+    const editor = new MindmapEditor(doc)
+    const rootId = doc.rootId
+    const bigId = editor.addChild(rootId)
+    const smallId = editor.addChild(rootId)
+
+    editor.setNodeMeasures({
+      [bigId]: { width: 1000, height: 40 },
+      [smallId]: { width: 120, height: 40 },
+      [rootId]: { width: 120, height: 40 },
+    })
+    editor.setLayout('tree-horizontal')
+
+    // Delete the wide node, then setLayout again WITHOUT calling setNodeMeasures
+    editor.deleteNode(bigId)
+    editor.setLayout('tree-horizontal')
+
+    // Small node should use default spacing, not the stale 1000px
+    const smallX = editor.getDoc().nodes[smallId]!.position!.x
+    expect(smallX).toBeLessThan(500)
+  })
+})
