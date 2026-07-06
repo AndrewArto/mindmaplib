@@ -1,9 +1,3 @@
-// CanvasView: the spatial canvas with pan/zoom viewport.
-//
-// Single CSS transform on the container applies pan/zoom. SVG edge layer
-// and HTML node layer are children of this container, using document coordinates.
-// Node drag updates node position via editor.setPosition. Background drag pans.
-
 import { useRef, useCallback, useMemo, useEffect } from 'react'
 import { useEditor } from './hooks/useEditor.js'
 import { useKeyboard } from './hooks/useKeyboard.js'
@@ -112,6 +106,9 @@ function CanvasViewComponent({
   }, [doc])
 
   // Visible nodes (viewport culling)
+  // CRITICAL: The editing node must NEVER be culled. If it's removed from the
+  // DOM, the TipTap editor unmounts, exitEditModeRef.current becomes null, and
+  // editingNodeId gets stuck — blocking all keyboard shortcuts.
   const visibleNodes = useMemo(() => {
     return Object.values(doc.nodes).filter((node) => {
       // Don't render descendants of collapsed nodes
@@ -123,9 +120,11 @@ function CanvasViewComponent({
         if (parent.collapsed) return false
         parentId = parent.parentId
       }
+      // Always render the editing node, even if off-screen
+      if (node.id === editingNodeId) return true
       return isNodeVisible(node.position, viewport, containerW, containerH)
     })
-  }, [doc, viewport, containerW, containerH])
+  }, [doc, viewport, containerW, containerH, editingNodeId])
 
   useEffect(() => {
     if (!selectToCenter || !selectedNodeId) return
@@ -239,9 +238,15 @@ function CanvasViewComponent({
 
       // B3 (MML-B-0011): If editing a different node, exit edit mode first
       // (click-away). This persists content before starting drag/pan.
+      // Fallback: if exitEditModeRef is null (editing component unmounted),
+      // call editor.stopEditing() directly to clear stale editingNodeId.
       if (editingNodeIdRef.current) {
         const exitFn = exitEditModeRef.current
-        if (exitFn) exitFn()
+        if (exitFn) {
+          exitFn()
+        } else {
+          editor.stopEditing()
+        }
       }
 
       // F1: Prevent default to stop native text selection and drag-and-drop
@@ -284,7 +289,7 @@ function CanvasViewComponent({
         document.addEventListener('mouseup', handleDragEnd)
       }
     },
-    [handleDragMove, handleDragEnd],
+    [handleDragMove, handleDragEnd, editor],
   )
 
   // Zoom handler (wheel, zoom-to-cursor)

@@ -3,7 +3,8 @@
 // Implements the keymap from MML-B-0001. Suspended automatically when
 // editingNodeId is set (TipTap handles keyboard during editing).
 // Escape during editing calls exitEditModeRef to persist content before
-// clearing the editing state.
+// clearing the editing state. If exitEditModeRef is null (editing component
+// was unmounted without cleanup), falls back to editor.stopEditing().
 
 import { useCallback } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -42,7 +43,14 @@ export function useKeyboard(
       if (state.editingNodeId !== null) {
         if (e.key === 'Escape') {
           const fn = exitEditModeRef.current
-          if (fn) fn()
+          if (fn) {
+            fn()
+          } else {
+            // Stale editingNodeId: editing component was unmounted without
+            // cleanup (viewport cull, crash). Clear directly to unblock
+            // all keyboard shortcuts.
+            editor.stopEditing()
+          }
           e.preventDefault()
         }
         return
