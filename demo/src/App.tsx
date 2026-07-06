@@ -457,7 +457,6 @@ export function App(): React.ReactElement {
               outlineWidth={320}
               outlineShowToolbar
               outlineSearchable
-              selectToCenter
               gridType="dots"
               className="demo-mindmap"
               onChange={scheduleSave}
