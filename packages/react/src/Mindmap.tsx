@@ -63,19 +63,9 @@ function MindmapComponent(props: MindmapProps): React.ReactElement {
   useEffect(() => {
     if (state.doc.version !== lastVersion.current) {
       lastVersion.current = state.doc.version
-      // onChange: fire on every document version change.
-      // We don't have the Transaction object from the subscribe API,
-      // so we pass a minimal stub. The host gets the resulting doc.
-      if (onChange) {
-        onChange(
-          {
-            id: 'adapter',
-            baseVersion: lastVersion.current,
-            ops: [],
-            timestamp: new Date().toISOString(),
-          },
-          state.doc,
-        )
+      const tx = editor.getLastTransaction()
+      if (onChange && tx) {
+        onChange(tx, state.doc)
       }
     }
   }, [state.doc.version, state.doc, onChange])

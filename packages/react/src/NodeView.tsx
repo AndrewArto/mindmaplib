@@ -57,7 +57,9 @@ function EditingNodeContent({
       const json = tiptapEditor.getJSON()
       const content = fromTipTapJSON(json)
       editor.updateContent(node.id, content)
-      editor.stopEditing()
+      if (editor.getState().editingNodeId === node.id) {
+        editor.stopEditing()
+      }
     }
 
     exitEditModeRef.current = persist

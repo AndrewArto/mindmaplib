@@ -4,7 +4,7 @@
 // and HTML node layer are children of this container, using document coordinates.
 // Node drag updates node position via editor.setPosition. Background drag pans.
 
-import { useRef, useCallback, useMemo } from 'react'
+import { useRef, useCallback, useMemo, useEffect } from 'react'
 import type { NodeMeasures } from '@mindmaplib/core'
 import { useEditor } from './hooks/useEditor.js'
 import { useKeyboard } from './hooks/useKeyboard.js'
@@ -52,6 +52,7 @@ function CanvasViewComponent({
   confirmDelete,
   exitEditModeRef,
   onNodeDoubleClick,
+  selectToCenter = false,
 }: CanvasViewProps): React.ReactElement {
   const containerRef = useRef<HTMLDivElement>(null)
   const panState = useRef<{
@@ -121,6 +122,36 @@ function CanvasViewComponent({
       return isNodeVisible(node.position, viewport, containerW, containerH)
     })
   }, [doc, viewport, containerW, containerH])
+
+  useEffect(() => {
+    if (!selectToCenter || !selectedNodeId) return
+    const node = doc.nodes[selectedNodeId]
+    const position = node?.position
+    if (!position) return
+    const measure = measures[selectedNodeId]
+    const width = measure?.width ?? 120
+    const height = measure?.height ?? 40
+    const nextViewport = {
+      ...viewport,
+      x: containerW / 2 - (position.x + width / 2) * viewport.zoom,
+      y: containerH / 2 - (position.y + height / 2) * viewport.zoom,
+    }
+    if (
+      Math.abs(nextViewport.x - viewport.x) > 0.5 ||
+      Math.abs(nextViewport.y - viewport.y) > 0.5
+    ) {
+      editor.setViewport(nextViewport)
+    }
+  }, [
+    selectToCenter,
+    selectedNodeId,
+    doc,
+    measures,
+    viewport,
+    containerW,
+    containerH,
+    editor,
+  ])
 
   // Pan/drag handler (background pan + node drag)
   const handleMouseDown = useCallback(
@@ -263,6 +294,7 @@ function CanvasViewComponent({
             left: 0,
             top: 0,
             pointerEvents: 'none',
+            overflow: 'visible',
           }}
         >
           {edges.map((edge) => (

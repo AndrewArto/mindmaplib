@@ -56,6 +56,7 @@ export class MindmapEditor {
   private readonly undoLimit: number
   private readonly store?: MindmapStore
   private lastSavedVersion: number
+  private lastTransaction: Transaction | null = null
 
   private readonly listeners = new Set<(state: EditorState) => void>()
 
@@ -70,6 +71,10 @@ export class MindmapEditor {
 
   getDoc(): MindmapDoc {
     return this.doc
+  }
+
+  getLastTransaction(): Transaction | null {
+    return this.lastTransaction
   }
 
   getState(): EditorState {
@@ -89,6 +94,7 @@ export class MindmapEditor {
     this.pushUndo(this.doc)
     this.redoStack = []
     this.doc = next
+    this.lastTransaction = tx
     this.notify()
   }
 
