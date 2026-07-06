@@ -85,6 +85,7 @@ export interface NodeViewProps {
   tiptapExtensions: Extensions
   customNodeRenderer?: CustomNodeRenderer
   exitEditModeRef: RefObject<(() => void) | null>
+  onNodeDoubleClick?: (nodeId: string, event: MouseEvent) => void
 }
 
 export interface EdgeViewProps {
@@ -131,7 +132,7 @@ export interface OutlineItemProps {
   onToggle: (nodeId: string) => void
   onEnter: (nodeId: string) => void
   onDelete: (nodeId: string) => void
-  onEdit: (nodeId: string) => void
+  onEdit: (nodeId: string, event?: MouseEvent) => void
   onFocusItem: (nodeId: string) => void
   onDragStart: (
     e: { dataTransfer: { setData: (format: string, data: string) => void } },

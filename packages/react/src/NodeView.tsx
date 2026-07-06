@@ -40,6 +40,7 @@ function NodeViewComponent({
   tiptapExtensions,
   customNodeRenderer,
   exitEditModeRef,
+  onNodeDoubleClick,
 }: NodeViewProps): React.ReactElement {
   const extensions = tiptapExtensions ?? DEFAULT_EXTENSIONS
 
@@ -101,7 +102,8 @@ function NodeViewComponent({
       }}
       onDoubleClick={(e) => {
         e.stopPropagation()
-        editor.startEditing(node.id)
+        onNodeDoubleClick?.(node.id, e)
+        if (!e.defaultPrevented) editor.startEditing(node.id)
       }}
     >
       {isEditing ? (

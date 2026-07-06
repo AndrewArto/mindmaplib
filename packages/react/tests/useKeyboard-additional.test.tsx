@@ -28,7 +28,7 @@ function setupEditor() {
 
 describe('useKeyboard additional', () => {
   it('Enter adds sibling', () => {
-    const { editor, child1 } = setupEditor()
+    const { editor } = setupEditor()
     const exitRef = createRef<(() => void) | null>()
     const { result } = renderHook(() => useKeyboard(editor, exitRef))
     act(() => result.current.onKeyDown(makeKbEvent('Enter')))
@@ -49,7 +49,7 @@ describe('useKeyboard additional', () => {
   })
 
   it('ArrowDown navigates to next sibling', () => {
-    const { editor, child1, child2 } = setupEditor()
+    const { editor, child2 } = setupEditor()
     const exitRef = createRef<(() => void) | null>()
     const { result } = renderHook(() => useKeyboard(editor, exitRef))
     act(() => result.current.onKeyDown(makeKbEvent('ArrowDown')))

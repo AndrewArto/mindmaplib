@@ -14,7 +14,7 @@ import {
   createToggleCollapsedOp,
   buildTransaction,
 } from '@mindmaplib/core'
-import type { MindmapDoc } from '@mindmaplib/core'
+import type { MindmapDoc, MindmapNode } from '@mindmaplib/core'
 import { useEditor } from './hooks/useEditor.js'
 import { textExcerpt, fullPlainText } from './content.js'
 import { OutlineItem } from './OutlineItem.js'
@@ -73,6 +73,14 @@ function buildFilteredList(doc: MindmapDoc, query: string): string[] {
   }
   if (doc.rootId) walkResult(doc.rootId)
   return result
+}
+
+async function resolveConfirm(
+  fn: ((node: MindmapNode) => Promise<boolean> | boolean) | undefined,
+  node: MindmapNode,
+): Promise<boolean> {
+  if (!fn) return false
+  return await fn(node)
 }
 
 function isDescendant(
@@ -143,6 +151,7 @@ function OutlineViewComponent({
   showToolbar = false,
   searchable = false,
   confirmDelete,
+  onNodeDoubleClick,
   className,
 }: OutlineViewProps): React.ReactElement {
   const state = useEditor(editor)
@@ -357,7 +366,7 @@ function OutlineViewComponent({
       const target = getNode(doc, targetId)
       if (!target) return null
       // Reject drops onto own descendants (prevents cycles)
-      if (isDescendant(doc, targetId, draggedIdRef.current!)) return null
+      if (isDescendant(doc, draggedIdRef.current!, targetId)) return null
       const isRoot = target.parentId === null
       const rect = targetEl.getBoundingClientRect()
       const y = clientY - rect.top
@@ -499,17 +508,19 @@ function OutlineViewComponent({
             const n = getNode(doc, nodeId)
             if (!n || n.parentId === null) return
             if (n.childOrder.length > 0) {
-              const shouldDelete = confirmDelete
-                ? confirmDelete(n)
-                : typeof window !== 'undefined' &&
-                  window.confirm(`Delete "${nodeId}" and its subtree?`)
-              if (shouldDelete) editor.deleteNode(nodeId)
+              resolveConfirm(confirmDelete, n).then((confirmed) => {
+                if (confirmed) editor.deleteNode(nodeId)
+              })
             } else {
               editor.deleteNode(nodeId)
             }
           }}
-          onEdit={(nodeId) => {
+          onEdit={(nodeId, event) => {
             editor.select(nodeId)
+            if (event) {
+              onNodeDoubleClick?.(nodeId, event)
+              if (event.defaultPrevented) return
+            }
             editor.startEditing(nodeId)
           }}
           onFocusItem={() => {}}
@@ -539,6 +550,7 @@ function OutlineViewComponent({
     handleDragOver,
     handleDragLeave,
     handleDrop,
+    onNodeDoubleClick,
   ])
 
   return (

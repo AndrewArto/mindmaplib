@@ -132,7 +132,7 @@ function OutlineItemComponent(props: OutlineItemProps): React.ReactElement {
         )}
         <span
           className={`mml-outline-excerpt ${excerpt === '(empty)' ? 'mml-outline-excerpt--empty' : ''} ${searchMatch ? 'mml-outline-search-match' : ''}`}
-          onDoubleClick={() => onEdit(node.id)}
+          onDoubleClick={(e) => onEdit(node.id, e)}
         >
           {excerpt}
         </span>

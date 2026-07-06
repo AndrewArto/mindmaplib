@@ -50,7 +50,6 @@ function MindmapComponent(props: MindmapProps): React.ReactElement {
   const lastVersion = useRef<number>(state.doc.version)
 
   useEffect(() => {
-    // onReady: fire once after mount
     onReady?.(editor)
   }, [])
 
@@ -64,11 +63,22 @@ function MindmapComponent(props: MindmapProps): React.ReactElement {
   useEffect(() => {
     if (state.doc.version !== lastVersion.current) {
       lastVersion.current = state.doc.version
-      // onChange fires on version change (transaction applied)
-      // Note: we don't have the Transaction object here from the subscription.
-      // This is the adapter interception approach (MML-B-0007 fallback option 2).
+      // onChange: fire on every document version change.
+      // We don't have the Transaction object from the subscribe API,
+      // so we pass a minimal stub. The host gets the resulting doc.
+      if (onChange) {
+        onChange(
+          {
+            id: 'adapter',
+            baseVersion: lastVersion.current,
+            ops: [],
+            timestamp: new Date().toISOString(),
+          },
+          state.doc,
+        )
+      }
     }
-  }, [state.doc.version, onChange])
+  }, [state.doc.version, state.doc, onChange])
 
   // Set initial layout mode
   useEffect(() => {

@@ -15,6 +15,14 @@ function isMod(e: KeyboardEvent | globalThis.KeyboardEvent): boolean {
   return e.metaKey || e.ctrlKey
 }
 
+async function resolveConfirm(
+  fn: ((node: MindmapNode) => Promise<boolean> | boolean) | undefined,
+  node: MindmapNode,
+): Promise<boolean> {
+  if (!fn) return false
+  return await fn(node)
+}
+
 export function useKeyboard(
   editor: MindmapEditor,
   exitEditModeRef: React.RefObject<(() => void) | null>,
@@ -74,10 +82,8 @@ export function useKeyboard(
       switch (e.key) {
         case 'Tab': {
           if (e.shiftKey) {
-            // Promote node
             editor.promoteNode(selectedId)
           } else {
-            // Add child
             const newId = editor.addChild(selectedId)
             editor.startEditing(newId)
           }
@@ -85,7 +91,6 @@ export function useKeyboard(
           break
         }
         case 'Enter': {
-          // Add sibling (no-op on root)
           if (selected.parentId === null) return
           const newId = editor.addSibling(selectedId)
           editor.startEditing(newId)
@@ -93,7 +98,6 @@ export function useKeyboard(
           break
         }
         case 'ArrowUp': {
-          // Navigate to previous sibling
           if (!selected.parentId) return
           const siblings = getChildren(doc, selected.parentId)
           const idx = siblings.findIndex((s) => s.id === selectedId)
@@ -102,7 +106,6 @@ export function useKeyboard(
           break
         }
         case 'ArrowDown': {
-          // Navigate to next sibling
           if (!selected.parentId) return
           const siblings = getChildren(doc, selected.parentId)
           const idx = siblings.findIndex((s) => s.id === selectedId)
@@ -111,13 +114,11 @@ export function useKeyboard(
           break
         }
         case 'ArrowLeft': {
-          // Navigate to parent
           if (selected.parentId) editor.select(selected.parentId)
           e.preventDefault()
           break
         }
         case 'ArrowRight': {
-          // Navigate to first child (expand if collapsed)
           const children = selected.childOrder
           if (children.length === 0) return
           if (selected.collapsed) {
@@ -129,18 +130,16 @@ export function useKeyboard(
         }
         case 'Delete':
         case 'Backspace': {
-          // Delete node (root immutable)
           if (selected.parentId === null) return
           const doDelete = () => {
             editor.deleteNode(selectedId)
             editor.select(null)
           }
           if (selected.childOrder.length > 0) {
-            const shouldDelete = confirmDelete
-              ? confirmDelete(selected)
-              : typeof window !== 'undefined' &&
-                window.confirm(`Delete "${selectedId}" and its subtree?`)
-            if (shouldDelete) doDelete()
+            // Async-safe: resolve Promise<boolean> | boolean before deleting
+            resolveConfirm(confirmDelete, selected).then((confirmed) => {
+              if (confirmed) doDelete()
+            })
           } else {
             doDelete()
           }
@@ -149,7 +148,6 @@ export function useKeyboard(
         }
         case ' ':
         case 'F2': {
-          // Enter edit mode
           editor.startEditing(selectedId)
           e.preventDefault()
           break

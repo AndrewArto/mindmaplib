@@ -51,6 +51,7 @@ function CanvasViewComponent({
   customNodeRenderer,
   confirmDelete,
   exitEditModeRef,
+  onNodeDoubleClick,
 }: CanvasViewProps): React.ReactElement {
   const containerRef = useRef<HTMLDivElement>(null)
   const panState = useRef<{
@@ -121,9 +122,32 @@ function CanvasViewComponent({
     })
   }, [doc, viewport, containerW, containerH])
 
-  // Pan handler (background drag)
+  // Pan/drag handler (background pan + node drag)
   const handleMouseDown = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
+      // Check if mousedown is on a node (for drag)
+      const target = e.target as HTMLElement
+      const nodeEl = target.closest('[data-node-id]')
+      if (nodeEl) {
+        const nodeId = nodeEl.getAttribute('data-node-id')
+        if (nodeId) {
+          const node = doc.nodes[nodeId]
+          if (node && node.position) {
+            const rect = containerRef.current!.getBoundingClientRect()
+            const screenX = e.clientX - rect.left
+            const screenY = e.clientY - rect.top
+            const docX = (screenX - viewport.x) / viewport.zoom
+            const docY = (screenY - viewport.y) / viewport.zoom
+            dragState.current = {
+              nodeId,
+              offsetX: docX - node.position.x,
+              offsetY: docY - node.position.y,
+            }
+            return
+          }
+        }
+      }
+      // Background pan
       if (
         e.target === e.currentTarget ||
         (e.target as HTMLElement).classList.contains('mml-canvas-pan-target')
@@ -136,7 +160,7 @@ function CanvasViewComponent({
         }
       }
     },
-    [viewport.x, viewport.y],
+    [viewport.x, viewport.y, viewport.zoom, doc],
   )
 
   const handleMouseMove = useCallback(
@@ -274,6 +298,7 @@ function CanvasViewComponent({
               tiptapExtensions={tiptapExtensions}
               customNodeRenderer={customNodeRenderer}
               exitEditModeRef={exitEditModeRef}
+              onNodeDoubleClick={onNodeDoubleClick}
             />
           ))}
         </div>
