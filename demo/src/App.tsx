@@ -57,13 +57,43 @@ function setSessionUrl(id: string | null): void {
 
 function BrandMark(): React.ReactElement {
   return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
       <circle cx="6" cy="6" r="2.5" fill="#21426f" />
       <circle cx="18" cy="6" r="2.5" fill="#355585" />
       <circle cx="12" cy="18" r="2.5" fill="#21426f" />
-      <line x1="6" y1="6" x2="18" y2="6" stroke="#21426f" strokeWidth="1.2" opacity="0.4" />
-      <line x1="6" y1="6" x2="12" y2="18" stroke="#21426f" strokeWidth="1.2" opacity="0.4" />
-      <line x1="18" y1="6" x2="12" y2="18" stroke="#21426f" strokeWidth="1.2" opacity="0.4" />
+      <line
+        x1="6"
+        y1="6"
+        x2="18"
+        y2="6"
+        stroke="#21426f"
+        strokeWidth="1.2"
+        opacity="0.4"
+      />
+      <line
+        x1="6"
+        y1="6"
+        x2="12"
+        y2="18"
+        stroke="#21426f"
+        strokeWidth="1.2"
+        opacity="0.4"
+      />
+      <line
+        x1="18"
+        y1="6"
+        x2="12"
+        y2="18"
+        stroke="#21426f"
+        strokeWidth="1.2"
+        opacity="0.4"
+      />
     </svg>
   )
 }
@@ -87,7 +117,16 @@ function ThemeToggle({
         title="Light"
         aria-pressed={theme === 'triplea'}
       >
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+        <svg
+          width="15"
+          height="15"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          aria-hidden="true"
+        >
           <circle cx="12" cy="12" r="4.5" />
           <path d="M12 1.5v2.5M12 20v2.5M4.2 4.2l1.8 1.8M18 18l1.8 1.8M1.5 12H4M20 12h2.5M4.2 19.8l1.8-1.8M18 6l1.8-1.8" />
         </svg>
@@ -99,7 +138,17 @@ function ThemeToggle({
         title="Dark"
         aria-pressed={theme === 'triplea-dark'}
       >
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <svg
+          width="15"
+          height="15"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
           <path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z" />
         </svg>
       </button>
@@ -245,10 +294,18 @@ export function App(): React.ReactElement {
           <span className="demo-badge">demo</span>
         </div>
         <div className="topbar-actions">
-          <button type="button" className="btn btn-primary" onClick={createSession}>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={createSession}
+          >
             New map
           </button>
-          <button type="button" className="btn btn-secondary" onClick={resetLocalDemo}>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={resetLocalDemo}
+          >
             Sample
           </button>
           <span className="topbar-divider" />
@@ -304,11 +361,23 @@ export function App(): React.ReactElement {
           </div>
           <div className="sidebar-footer">
             <div className="rich-hint">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                aria-hidden="true"
+              >
                 <path d="M4 7V5h16v2M9 5v14M7 19h4" />
                 <path d="M14 12h6M14 16h6M14 8h6" opacity="0.5" />
               </svg>
-              <span>Double-click a node to edit. Rich text: **bold**, *italic*, `code`, [links](url), lists</span>
+              <span>
+                Double-click a node to edit. Rich text: **bold**, *italic*,
+                `code`, [links](url), lists
+              </span>
             </div>
           </div>
         </aside>

@@ -108,7 +108,8 @@ export function computeLayoutOps(
     const xVals = laid.descendants().map((d) => d.x)
     radialXMin = Math.min(...xVals)
     const xRange = Math.max(...xVals) - radialXMin
-    radialAngleScale = (2 * Math.PI) / Math.max(xRange, 1)
+    // +1 ensures endpoints don't map to the same angle (0 ≁ 2π)
+    radialAngleScale = (2 * Math.PI) / Math.max(xRange + 1, 1)
   } else {
     laid = tree<MindmapNode>().nodeSize([siblingW, depthW])(h)
   }

@@ -164,6 +164,39 @@ describe('computeLayoutOps', () => {
     expect(r).toBeLessThan(1)
   })
 
+  it('radial: flat root with 4 children, no endpoints share angle (P1 fix)', () => {
+    // 1 root -> 4 children, no grandchildren. This is the edge case where
+    // d3 produces x values at symmetric positions that could wrap around.
+    let doc = createDoc('P1')
+    const root = doc.rootId
+    const childIds: string[] = []
+    for (let i = 0; i < 4; i++) {
+      const before = doc
+      doc = addNode(doc, root)
+      childIds.push(findNewId(before, doc, root))
+    }
+    const ops = computeLayoutOps(doc, 'radial', {
+      defaultNodeSize: { width: 160, height: 40 },
+      spacingX: 40,
+      spacingY: 20,
+    })
+    const posMap = new Map<string, Position>()
+    for (const op of ops) {
+      if ('nodeId' in op) posMap.set(op.nodeId, op.position)
+    }
+    // No two depth-1 children at the same position
+    for (let i = 0; i < childIds.length; i++) {
+      for (let j = i + 1; j < childIds.length; j++) {
+        const p1 = posMap.get(childIds[i]!)
+        const p2 = posMap.get(childIds[j]!)
+        expect(p1).toBeDefined()
+        expect(p2).toBeDefined()
+        const dist = Math.hypot(p1!.x - p2!.x, p1!.y - p2!.y)
+        expect(dist).toBeGreaterThanOrEqual(100)
+      }
+    }
+  })
+
   it('radial: depth increases with distance from origin (C1 fix)', () => {
     const { doc, childIds } = buildRadialTestTree()
     const ops = computeLayoutOps(doc, 'radial')

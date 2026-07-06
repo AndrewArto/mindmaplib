@@ -197,10 +197,12 @@ export class MindmapEditor {
    */
   commitPosition(nodeId: string, position: Position): void {
     const snapshot = this.dragSnapshot ?? this.doc
+    // Validate first: build + apply BEFORE mutating undo/redo state
+    const tx = buildTransaction(this.doc, createSetPositionOp(nodeId, position))
+    const next = applyTransaction(this.doc, tx) // throws if invalid
     this.pushUndo(snapshot)
     this.redoStack = []
-    const tx = buildTransaction(this.doc, createSetPositionOp(nodeId, position))
-    this.doc = applyTransaction(this.doc, tx)
+    this.doc = next
     this.lastTransaction = tx
     this.dragSnapshot = null
     this.notify()

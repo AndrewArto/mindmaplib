@@ -51,7 +51,10 @@ export function createSampleDoc(): MindmapDoc {
   const rootId = doc.rootId
 
   // Root node — showcase bold + italic mixed
-  editor.updateContent(rootId, rich(bold('TripleA'), txt(' '), italic('AI enablement')))
+  editor.updateContent(
+    rootId,
+    rich(bold('TripleA'), txt(' '), italic('AI enablement')),
+  )
 
   // Strategy branch — heading + list
   const strategy = editor.addChild(rootId, {
@@ -61,7 +64,10 @@ export function createSampleDoc(): MindmapDoc {
     content: rich(txt('90-day '), bold('delivery roadmap')),
   })
   editor.addChild(strategy, {
-    content: rich(txt('Executive decision '), link('cadence', 'https://tripleadigital.io')),
+    content: rich(
+      txt('Executive decision '),
+      link('cadence', 'https://tripleadigital.io'),
+    ),
   })
   editor.addChild(strategy, {
     content: rich(txt('Adoption targets: '), code('NPS > 50')),
@@ -83,7 +89,7 @@ export function createSampleDoc(): MindmapDoc {
     content: rich(bold('Custom software'), txt(' systems')),
   })
   editor.addChild(systems, {
-    content: rich(txt('Portal integration'), ),
+    content: rich(txt('Portal integration')),
   })
   editor.addChild(systems, {
     content: rich(txt('D1 persistence ('), italic('edge SQL'), txt(')')),

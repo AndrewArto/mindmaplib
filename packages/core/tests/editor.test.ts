@@ -333,6 +333,24 @@ describe('MindmapEditor drag-position (C2 fix)', () => {
     expect(editor.getDoc().nodes[child]!.position).toEqual({ x: 0, y: 0 })
   })
 
+  it('commitPosition with invalid nodeId does not corrupt undo history (P2 fix)', () => {
+    const editor = new MindmapEditor(createDoc('D'))
+    const root = editor.getDoc().rootId
+    const child = editor.addChild(root)
+    editor.setPosition(child, { x: 10, y: 10 })
+    const undoCount = editor.canUndo() // should be true
+
+    // Attempt commitPosition with non-existent node
+    expect(() =>
+      editor.commitPosition('nonexistent', { x: 99, y: 99 }),
+    ).toThrow()
+
+    // Undo history should be intact
+    expect(editor.canUndo()).toBe(undoCount)
+    // Position should be unchanged
+    expect(editor.getDoc().nodes[child]!.position).toEqual({ x: 10, y: 10 })
+  })
+
   it('setPosition is an alias for commitPosition (backward compat)', () => {
     const editor = new MindmapEditor(createDoc('D'))
     const root = editor.getDoc().rootId
