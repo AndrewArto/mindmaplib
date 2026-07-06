@@ -580,3 +580,114 @@ button {
     align-items: flex-start;
   }
 }
+
+/* --- Theme swatches --- */
+
+.topbar-divider {
+  width: 1px;
+  height: 22px;
+  background: var(--line-strong);
+  margin: 0 4px;
+  flex-shrink: 0;
+}
+
+.theme-switcher {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+}
+
+.theme-swatch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  box-shadow: none;
+  cursor: pointer;
+  overflow: hidden;
+  line-height: 0;
+  transition:
+    border-color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.theme-swatch:hover {
+  transform: none;
+  border-color: var(--line-strong);
+}
+
+.theme-swatch.active {
+  border-color: var(--accent);
+}
+
+/* --- Sidebar footer / rich text hint --- */
+
+.sidebar-footer {
+  flex-shrink: 0;
+  padding: 10px 14px;
+  border-top: 1px solid var(--line);
+}
+
+.rich-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.rich-hint svg {
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+/* --- Rich text rendering inside nodes --- */
+
+.demo-mindmap .mml-node-content strong,
+.demo-mindmap .mml-node-content b {
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.demo-mindmap .mml-node-content em,
+.demo-mindmap .mml-node-content i {
+  font-style: italic;
+}
+
+.demo-mindmap .mml-node-content code {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 0.85em;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent);
+}
+
+.demo-mindmap .mml-node-content a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  text-underline-offset: 2px;
+}
+
+.demo-mindmap .mml-node-content a:hover {
+  text-decoration-color: var(--accent);
+}
+
+.demo-mindmap .mml-node-content ul {
+  margin: 4px 0 0;
+  padding-left: 16px;
+}
+
+.demo-mindmap .mml-node-content li {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink);
+}

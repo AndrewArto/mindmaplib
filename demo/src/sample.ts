@@ -3,12 +3,45 @@ import {
   createDoc,
   type MindmapDoc,
   type NodeContent,
+  type NodeContentInline,
 } from '@mindmaplib/core'
 
-function textContent(text: string): NodeContent {
+function rich(...inlines: NodeContentInline[]): NodeContent {
+  return { type: 'doc', content: [{ type: 'paragraph', content: inlines }] }
+}
+
+function txt(text: string): NodeContentInline {
+  return { type: 'text', text }
+}
+
+function bold(text: string): NodeContentInline {
+  return { type: 'text', text, marks: [{ type: 'bold' }] }
+}
+
+function italic(text: string): NodeContentInline {
+  return { type: 'text', text, marks: [{ type: 'italic' }] }
+}
+
+function code(text: string): NodeContentInline {
+  return { type: 'text', text, marks: [{ type: 'code' }] }
+}
+
+function link(text: string, href: string): NodeContentInline {
+  return { type: 'text', text, marks: [{ type: 'link', attrs: { href } }] }
+}
+
+function listDoc(items: string[]): NodeContent {
   return {
     type: 'doc',
-    content: [{ type: 'paragraph', content: [{ type: 'text', text }] }],
+    content: [
+      {
+        type: 'bulletList',
+        content: items.map((item) => ({
+          type: 'listItem',
+          content: [{ type: 'paragraph', content: [txt(item)] }],
+        })),
+      },
+    ],
   }
 }
 
@@ -17,45 +50,55 @@ export function createSampleDoc(): MindmapDoc {
   const editor = new MindmapEditor(doc)
   const rootId = doc.rootId
 
-  editor.updateContent(rootId, textContent('TripleA Digital AI enablement'))
+  // Root node — showcase bold + italic mixed
+  editor.updateContent(rootId, rich(bold('TripleA'), txt(' '), italic('AI enablement')))
 
+  // Strategy branch — heading + list
   const strategy = editor.addChild(rootId, {
-    content: textContent('Strategy and operating model'),
-  })
-  editor.addChild(strategy, { content: textContent('90-day delivery roadmap') })
-  editor.addChild(strategy, {
-    content: textContent('Executive decision cadence'),
+    content: rich(bold('Strategy'), txt(' & '), italic('operating model')),
   })
   editor.addChild(strategy, {
-    content: textContent('Measurable adoption targets'),
+    content: rich(txt('90-day '), bold('delivery roadmap')),
+  })
+  editor.addChild(strategy, {
+    content: rich(txt('Executive decision '), link('cadence', 'https://tripleadigital.io')),
+  })
+  editor.addChild(strategy, {
+    content: rich(txt('Adoption targets: '), code('NPS > 50')),
   })
 
+  // Automation branch — code marks + formatting mix
   const automation = editor.addChild(rootId, {
-    content: textContent('Workflow automation'),
-  })
-  editor.addChild(automation, { content: textContent('Intake triage') })
-  editor.addChild(automation, {
-    content: textContent('CRM and document flows'),
+    content: rich(bold('Workflow'), txt(' '), italic('automation')),
   })
   editor.addChild(automation, {
-    content: textContent('Human approval checkpoints'),
+    content: listDoc(['Intake triage', 'CRM flows', 'Approval checkpoints']),
+  })
+  editor.addChild(automation, {
+    content: rich(txt('Trigger: '), code('webhook → D1 write')),
   })
 
+  // Systems branch
   const systems = editor.addChild(rootId, {
-    content: textContent('Custom software systems'),
+    content: rich(bold('Custom software'), txt(' systems')),
   })
-  editor.addChild(systems, { content: textContent('Portal integration') })
-  editor.addChild(systems, { content: textContent('D1 persistence') })
   editor.addChild(systems, {
-    content: textContent('Audit-friendly architecture'),
+    content: rich(txt('Portal integration'), ),
+  })
+  editor.addChild(systems, {
+    content: rich(txt('D1 persistence ('), italic('edge SQL'), txt(')')),
   })
 
+  // Risk branch — link + code
   const risk = editor.addChild(rootId, {
-    content: textContent('Risk and governance'),
+    content: rich(bold('Risk'), txt(' & '), italic('governance')),
   })
-  editor.addChild(risk, { content: textContent('Data boundaries') })
-  editor.addChild(risk, { content: textContent('Rollback paths') })
-  editor.addChild(risk, { content: textContent('Production verification') })
+  editor.addChild(risk, {
+    content: rich(link('Data boundaries', 'https://tripleadigital.io')),
+  })
+  editor.addChild(risk, {
+    content: rich(txt('Rollback: '), code('git revert + CF rollback')),
+  })
 
   editor.setLayout('tree-horizontal')
   return editor.getDoc()

@@ -68,6 +68,52 @@ function BrandMark(): React.ReactElement {
   )
 }
 
+/**
+ * Graphical theme swatch — shows a mini preview of what the theme looks like.
+ * Users see the color palette without needing to click a dropdown.
+ */
+function ThemeSwatch({
+  theme,
+  active,
+  onClick,
+  title,
+}: {
+  theme: ThemeName
+  active: boolean
+  onClick: () => void
+  title: string
+}): React.ReactElement {
+  const bg = theme === 'triplea' ? '#f6f4ef' : '#080e27'
+  const card = theme === 'triplea' ? '#ffffff' : 'rgba(15,23,60,0.82)'
+  const accent = theme === 'triplea' ? '#21426f' : '#7fa6d9'
+  const ink = theme === 'triplea' ? '#16181d' : '#f1f5f9'
+  const line = theme === 'triplea' ? '#e6e2d9' : 'rgba(255,255,255,0.08)'
+
+  return (
+    <button
+      type="button"
+      className={`theme-swatch ${active ? 'active' : ''}`}
+      onClick={onClick}
+      title={title}
+      aria-label={title}
+      aria-pressed={active}
+    >
+      <svg width="40" height="28" viewBox="0 0 40 28" fill="none" aria-hidden="true">
+        <rect width="40" height="28" rx="6" fill={bg} />
+        <line x1="8" y1="6" x2="16" y2="14" stroke={accent} strokeWidth="1" opacity="0.4" />
+        <line x1="8" y1="6" x2="16" y2="22" stroke={accent} strokeWidth="1" opacity="0.4" />
+        <line x1="16" y1="14" x2="32" y2="10" stroke={accent} strokeWidth="1" opacity="0.3" />
+        <line x1="16" y1="22" x2="32" y2="20" stroke={accent} strokeWidth="1" opacity="0.3" />
+        <circle cx="8" cy="6" r="3" fill={card} stroke={accent} strokeWidth="0.8" />
+        <rect x="14" y="11" width="6" height="6" rx="2" fill={card} stroke={line} strokeWidth="0.5" />
+        <rect x="28" y="7" width="8" height="6" rx="2" fill={card} stroke={line} strokeWidth="0.5" />
+        <rect x="28" y="17" width="8" height="6" rx="2" fill={card} stroke={line} strokeWidth="0.5" />
+        <circle cx="17" cy="14" r="1.5" fill={ink} opacity="0.6" />
+      </svg>
+    </button>
+  )
+}
+
 const statusText: Record<SaveState, string> = {
   idle: 'Local sample',
   saving: 'Saving…',
@@ -212,15 +258,21 @@ export function App(): React.ReactElement {
           <button type="button" className="btn btn-secondary" onClick={resetLocalDemo}>
             Sample
           </button>
-          <select
-            className="theme-select"
-            aria-label="Theme"
-            value={theme}
-            onChange={(event) => setTheme(event.target.value as ThemeName)}
-          >
-            <option value="triplea">Light</option>
-            <option value="triplea-dark">Dark</option>
-          </select>
+          <span className="topbar-divider" />
+          <div className="theme-switcher" role="group" aria-label="Theme">
+            <ThemeSwatch
+              theme="triplea"
+              active={theme === 'triplea'}
+              onClick={() => setTheme('triplea')}
+              title="Light theme"
+            />
+            <ThemeSwatch
+              theme="triplea-dark"
+              active={theme === 'triplea-dark'}
+              onClick={() => setTheme('triplea-dark')}
+              title="Dark theme"
+            />
+          </div>
         </div>
       </header>
 
@@ -269,6 +321,15 @@ export function App(): React.ReactElement {
                 ))}
               </ul>
             )}
+          </div>
+          <div className="sidebar-footer">
+            <div className="rich-hint">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                <path d="M4 7V5h16v2M9 5v14M7 19h4" />
+                <path d="M14 12h6M14 16h6M14 8h6" opacity="0.5" />
+              </svg>
+              <span>Rich text: **bold**, *italic*, `code`, [links](url), lists</span>
+            </div>
           </div>
         </aside>
 
