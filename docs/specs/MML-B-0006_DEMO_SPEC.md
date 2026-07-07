@@ -71,6 +71,7 @@ demo/
 | Design tokens / styling      | `style.css`                  | CSS custom properties, passed to `<Mindmap>` via props |
 | Build & deploy pipeline      | `build-worker.mjs`, CF Pages | Vite build + esbuild worker, CF Pages git integration  |
 | Auto-save orchestration      | `App.tsx`                    | Debounced `editor.save()` on state change              |
+| Keyboard shortcuts overlay   | `App.tsx`, `style.css`       | Demo-owned help / cheatsheet UI; see MML-B-0011        |
 
 ### What the demo does NOT own (delegated to the library)
 
@@ -195,7 +196,10 @@ inherited custom properties — the demo does not override adapter internals.
    sessions with title + last-updated, plus a New button.
 9. **Style**: light theme using the design tokens above. Inter font. Node text
    is readable at default zoom.
-10. **Deploy**: `mapdemo.tripleadigital.io` serves the built app. Git push to
+10. **Keyboard shortcuts overlay** (demo-owned): toolbar help button and `?`
+    trigger open the MML-B-0011 shortcuts overlay. It documents the current
+    adapter shortcuts without changing library keyboard behavior.
+11. **Deploy**: `mapdemo.tripleadigital.io` serves the built app. Git push to
     `main` triggers automatic rebuild.
 
 ## Test Plan
@@ -204,9 +208,9 @@ inherited custom properties — the demo does not override adapter internals.
   - `D1Store.ts`: CRUD operations against the Pages Function API.
   - Auto-save debounce logic.
 - **E2E (Playwright)**: load `/`, create a node, type rich text, bold it,
-  switch layout, toggle outline, verify node count in DOM, create session,
-  reload, verify persistence. Rich text, canvas, outline behavior tested
-  through the adapter integration.
+  switch layout, toggle outline, open/close keyboard shortcuts overlay, verify
+  node count in DOM, create session, reload, verify persistence. Rich text,
+  canvas, outline behavior tested through the adapter integration.
 
 ## Package Dependencies
 
@@ -227,6 +231,10 @@ DOMPurify — those are transitive through `@mindmaplib/react`.
 - **Output**: `demo/dist/` with `index.html`, `assets/`, `_worker.js`, `_routes.json`.
 - **CF Pages**: native git integration on `main` branch. No wrangler.toml.
   D1 binding configured via Cloudflare API (`d1_databases` map format).
+
+## Related Specs
+
+- MML-B-0011 — Demo Keyboard Shortcuts Overlay Specification.
 
 ## Changelog
 
