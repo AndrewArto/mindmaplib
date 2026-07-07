@@ -721,7 +721,12 @@ button {
 
   .map-toolbar {
     flex-direction: column;
-    align-items: flex-start;
+    align-items: stretch;
+  }
+
+  .toolbar-buttons {
+    flex-wrap: wrap;
+    max-width: 100%;
   }
 
   .shortcuts-content {
@@ -731,6 +736,72 @@ button {
   .shortcut-row {
     grid-template-columns: 1fr;
     gap: 4px;
+  }
+}
+
+@media (max-width: 480px) {
+  .topbar {
+    padding: 10px 12px;
+    gap: 10px;
+  }
+
+  .brand-block,
+  .topbar-actions {
+    width: 100%;
+  }
+
+  .topbar-actions {
+    justify-content: space-between;
+  }
+
+  .topbar-divider {
+    margin-left: auto;
+  }
+
+  .workspace {
+    gap: 10px;
+    padding: 10px;
+  }
+
+  .sidebar {
+    max-height: 160px;
+  }
+
+  .sidebar-footer {
+    display: none;
+  }
+
+  .map-card {
+    height: calc(100svh - 92px);
+    min-height: 560px;
+  }
+
+  .map-toolbar {
+    gap: 10px;
+    padding: 10px;
+  }
+
+  .toolbar-buttons {
+    gap: 3px;
+  }
+
+  .toolbar-group {
+    gap: 2px;
+    padding: 2px;
+  }
+
+  .toolbar-divider {
+    margin: 0 2px;
+  }
+
+  .icon-button {
+    width: 28px;
+    height: 28px;
+    min-height: 28px;
+  }
+
+  .demo-mindmap .mml-outline-wrapper {
+    max-width: 45vw;
   }
 }
 

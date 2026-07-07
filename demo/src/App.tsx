@@ -22,6 +22,7 @@ import {
   getPlatformModifier,
   isEditableTarget,
 } from './KeyboardShortcutsOverlay'
+import { getResponsiveOutlineWidth } from './responsive'
 
 type ThemeName = 'triplea' | 'triplea-dark'
 
@@ -59,6 +60,10 @@ function setSessionUrl(id: string | null): void {
     url.searchParams.delete('id')
   }
   window.history.replaceState({}, '', url)
+}
+
+function getInitialViewportWidth(): number {
+  return typeof window === 'undefined' ? 1024 : window.innerWidth
 }
 
 function BrandMark(): React.ReactElement {
@@ -180,6 +185,7 @@ export function App(): React.ReactElement {
   const [theme, setTheme] = useState<ThemeName>('triplea')
   const [showOutline, setShowOutline] = useState(true)
   const [showShortcuts, setShowShortcuts] = useState(false)
+  const [viewportWidth, setViewportWidth] = useState(getInitialViewportWidth)
   const [layout, setLayout] = useState<LayoutMode>('tree-horizontal')
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -187,6 +193,10 @@ export function App(): React.ReactElement {
   const previousFocus = useRef<HTMLElement | null>(null)
   const shortcutsButtonRef = useRef<HTMLButtonElement>(null)
   const shortcutModifier = useMemo(() => getPlatformModifier(), [])
+  const outlineWidth = useMemo(
+    () => getResponsiveOutlineWidth(viewportWidth),
+    [viewportWidth],
+  )
 
   const refreshSessions = useCallback(async () => {
     const rows = await store.list()
@@ -240,6 +250,12 @@ export function App(): React.ReactElement {
     return () => {
       if (saveTimer.current !== null) window.clearTimeout(saveTimer.current)
     }
+  }, [])
+
+  useEffect(() => {
+    const handleResize = () => setViewportWidth(window.innerWidth)
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
   }, [])
 
   const openShortcuts = useCallback(() => {
@@ -513,7 +529,7 @@ export function App(): React.ReactElement {
               editor={editor}
               showOutline={showOutline}
               layoutMode={layout}
-              outlineWidth={320}
+              outlineWidth={outlineWidth}
               outlineShowToolbar
               outlineSearchable
               gridType="dots"
