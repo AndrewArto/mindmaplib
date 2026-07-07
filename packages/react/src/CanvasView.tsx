@@ -126,6 +126,43 @@ function CanvasViewComponent({
     })
   }, [doc, viewport, containerW, containerH, editingNodeId])
 
+  // Global undo/redo: works regardless of canvas focus.
+  // The canvas onKeyDown only fires when the canvas div has focus, which
+  // breaks Cmd+Z after interacting with toolbar buttons, the sidebar, or
+  // on initial page load. This document-level listener catches undo/redo
+  // from anywhere, with guards for text editing and form inputs.
+  useEffect(() => {
+    const handleGlobalUndo = (e: KeyboardEvent) => {
+      const isMod = e.metaKey || e.ctrlKey
+      if (!isMod) return
+      const key = e.key.toLowerCase()
+      const isUndo = key === 'z' && !e.shiftKey
+      const isRedo = (key === 'z' && e.shiftKey) || key === 'y'
+      if (!isUndo && !isRedo) return
+
+      // Skip during text editing — TipTap handles its own undo/redo
+      if (editingNodeIdRef.current !== null) return
+
+      // Skip when focus is in a form field or contenteditable
+      const active = document.activeElement as HTMLElement | null
+      if (active) {
+        const tag = active.tagName
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+        if (active.isContentEditable) return
+      }
+
+      if (isUndo) {
+        editor.undo()
+      } else {
+        editor.redo()
+      }
+      e.preventDefault()
+    }
+
+    document.addEventListener('keydown', handleGlobalUndo)
+    return () => document.removeEventListener('keydown', handleGlobalUndo)
+  }, [editor])
+
   useEffect(() => {
     if (!selectToCenter || !selectedNodeId) return
     const node = doc.nodes[selectedNodeId]

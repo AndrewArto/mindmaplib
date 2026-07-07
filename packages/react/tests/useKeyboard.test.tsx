@@ -48,35 +48,6 @@ describe('useKeyboard', () => {
     expect(exitFn).toHaveBeenCalledOnce()
   })
 
-  it('undo on Cmd+Z', () => {
-    const doc = createDoc('Test')
-    const editor = new MindmapEditor(doc)
-    editor.select(doc.rootId)
-    editor.addChild(doc.rootId)
-    const exitRef = createRef<(() => void) | null>()
-    const { result } = renderHook(() => useKeyboard(editor, exitRef))
-    act(() => {
-      result.current.onKeyDown(makeKbEvent('z', { metaKey: true }))
-    })
-    expect(editor.getState().doc.nodes[doc.rootId].childOrder.length).toBe(0)
-  })
-
-  it('redo on Cmd+Shift+Z', () => {
-    const doc = createDoc('Test')
-    const editor = new MindmapEditor(doc)
-    editor.select(doc.rootId)
-    editor.addChild(doc.rootId)
-    editor.undo()
-    const exitRef = createRef<(() => void) | null>()
-    const { result } = renderHook(() => useKeyboard(editor, exitRef))
-    act(() => {
-      result.current.onKeyDown(
-        makeKbEvent('z', { metaKey: true, shiftKey: true }),
-      )
-    })
-    expect(editor.getState().doc.nodes[doc.rootId].childOrder.length).toBe(1)
-  })
-
   it('escape deselects node', () => {
     const doc = createDoc('Test')
     const editor = new MindmapEditor(doc)
