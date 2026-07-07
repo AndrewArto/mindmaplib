@@ -35,6 +35,14 @@ export default defineConfig({
           },
         },
       },
+      {
+        // Demo app shell tests: jsdom environment
+        test: {
+          name: 'demo',
+          environment: 'jsdom',
+          include: ['demo/tests/**/*.test.{ts,tsx}'],
+        },
+      },
     ],
   },
 })

@@ -148,6 +148,25 @@ export function IconPanelToggle({ size = 18 }: IconProps): React.ReactElement {
   )
 }
 
+export function IconKeyboard({ size = 18 }: IconProps): React.ReactElement {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="3" y="6" width="18" height="12" rx="2" />
+      <path d="M7 10 H7.01 M10 10 H10.01 M13 10 H13.01 M16 10 H16.01 M8 14 H16" />
+    </svg>
+  )
+}
+
 const layoutIcons: Record<string, (props: IconProps) => React.ReactElement> = {
   'tree-horizontal': IconTreeHorizontal,
   'tree-vertical': IconTreeVertical,

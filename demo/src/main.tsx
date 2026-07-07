@@ -10,7 +10,6 @@ if (!app) {
   throw new Error('Missing #app mount point')
 }
 
-// eslint-disable-next-line no-console
 console.log(
   `%c mindmaplib demo %c ${__BUILD_TIME__} `,
   'background:#1a1a2e;color:#8be9fd;padding:2px 6px;border-radius:3px 0 0 3px',

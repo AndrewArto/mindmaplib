@@ -14,8 +14,14 @@ import {
   IconUndo,
   IconRedo,
   IconPanelToggle,
+  IconKeyboard,
 } from './icons'
 import { createSampleDoc } from './sample'
+import {
+  KeyboardShortcutsOverlay,
+  getPlatformModifier,
+  isEditableTarget,
+} from './KeyboardShortcutsOverlay'
 
 type ThemeName = 'triplea' | 'triplea-dark'
 
@@ -173,10 +179,14 @@ export function App(): React.ReactElement {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
   const [theme, setTheme] = useState<ThemeName>('triplea')
   const [showOutline, setShowOutline] = useState(true)
+  const [showShortcuts, setShowShortcuts] = useState(false)
   const [layout, setLayout] = useState<LayoutMode>('tree-horizontal')
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const saveTimer = useRef<number | null>(null)
+  const previousFocus = useRef<HTMLElement | null>(null)
+  const shortcutsButtonRef = useRef<HTMLButtonElement>(null)
+  const shortcutModifier = useMemo(() => getPlatformModifier(), [])
 
   const refreshSessions = useCallback(async () => {
     const rows = await store.list()
@@ -231,6 +241,43 @@ export function App(): React.ReactElement {
       if (saveTimer.current !== null) window.clearTimeout(saveTimer.current)
     }
   }, [])
+
+  const openShortcuts = useCallback(() => {
+    previousFocus.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null
+    setShowShortcuts(true)
+  }, [])
+
+  const closeShortcuts = useCallback(() => {
+    setShowShortcuts(false)
+    window.setTimeout(() => {
+      const target = previousFocus.current ?? shortcutsButtonRef.current
+      target?.focus()
+    }, 0)
+  }, [])
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (showShortcuts) {
+        if (event.key === 'Escape') {
+          event.preventDefault()
+          event.stopPropagation()
+          closeShortcuts()
+        }
+        return
+      }
+
+      if (event.key === '?' && !isEditableTarget(event.target)) {
+        event.preventDefault()
+        openShortcuts()
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [closeShortcuts, openShortcuts, showShortcuts])
 
   const scheduleSave = useCallback(() => {
     if (!activeSessionId) return
@@ -443,6 +490,18 @@ export function App(): React.ReactElement {
               >
                 <IconPanelToggle size={16} />
               </button>
+              <button
+                ref={shortcutsButtonRef}
+                type="button"
+                className={`icon-button ${showShortcuts ? 'active' : ''}`}
+                title="Keyboard shortcuts"
+                aria-label="Keyboard shortcuts"
+                aria-haspopup="dialog"
+                aria-expanded={showShortcuts}
+                onClick={openShortcuts}
+              >
+                <IconKeyboard size={16} />
+              </button>
             </div>
           </div>
 
@@ -464,6 +523,13 @@ export function App(): React.ReactElement {
           </div>
         </section>
       </main>
+
+      {showShortcuts && (
+        <KeyboardShortcutsOverlay
+          modifier={shortcutModifier}
+          onClose={closeShortcuts}
+        />
+      )}
     </div>
   )
 }
