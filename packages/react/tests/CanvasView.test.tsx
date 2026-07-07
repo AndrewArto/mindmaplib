@@ -312,3 +312,156 @@ describe('MML-B-0011: focus and click-away', () => {
     expect(editor.getState().editingNodeId).toBeNull()
   })
 })
+
+// =========================================================================
+// MML-B-0012: Global undo/redo keyboard shortcut
+// =========================================================================
+
+describe('MML-B-0012: global undo/redo', () => {
+  it('Cmd+Z undoes even when canvas does not have focus', () => {
+    const doc = createDoc('Test')
+    const editor = new MindmapEditor(doc)
+    editor.setLayout('tree-horizontal')
+    editor.addChild(doc.rootId)
+    expect(editor.getDoc().nodes[doc.rootId].childOrder.length).toBe(1)
+
+    const { unmount } = render(<Mindmap editor={editor} />)
+
+    // Ensure canvas does NOT have focus (simulate focus on body)
+    document.body.focus()
+    expect(document.activeElement).toBe(document.body)
+
+    // Dispatch Cmd+Z as a document-level event (real user keydown)
+    const event = new KeyboardEvent('keydown', {
+      key: 'z',
+      code: 'KeyZ',
+      metaKey: true,
+      shiftKey: false,
+      bubbles: true,
+      cancelable: true,
+    })
+    document.dispatchEvent(event)
+
+    // Undo should have worked despite no canvas focus
+    expect(editor.getDoc().nodes[doc.rootId].childOrder.length).toBe(0)
+    expect(event.defaultPrevented).toBe(true)
+
+    unmount()
+  })
+
+  it('Cmd+Shift+Z redoes even when canvas does not have focus', () => {
+    const doc = createDoc('Test')
+    const editor = new MindmapEditor(doc)
+    editor.addChild(doc.rootId)
+    editor.undo()
+    expect(editor.getDoc().nodes[doc.rootId].childOrder.length).toBe(0)
+
+    render(<Mindmap editor={editor} />)
+    document.body.focus()
+
+    const event = new KeyboardEvent('keydown', {
+      key: 'z',
+      code: 'KeyZ',
+      metaKey: true,
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    })
+    document.dispatchEvent(event)
+
+    expect(editor.getDoc().nodes[doc.rootId].childOrder.length).toBe(1)
+  })
+
+  it('Ctrl+Y also triggers redo (Windows/Linux)', () => {
+    const doc = createDoc('Test')
+    const editor = new MindmapEditor(doc)
+    editor.addChild(doc.rootId)
+    editor.undo()
+
+    render(<Mindmap editor={editor} />)
+    document.body.focus()
+
+    const event = new KeyboardEvent('keydown', {
+      key: 'y',
+      code: 'KeyY',
+      ctrlKey: true,
+      shiftKey: false,
+      bubbles: true,
+      cancelable: true,
+    })
+    document.dispatchEvent(event)
+
+    expect(editor.getDoc().nodes[doc.rootId].childOrder.length).toBe(1)
+  })
+
+  it('does not intercept Cmd+Z when focus is in an input field', () => {
+    const doc = createDoc('Test')
+    const editor = new MindmapEditor(doc)
+    editor.addChild(doc.rootId)
+
+    render(<Mindmap editor={editor} />)
+
+    // Simulate focus in an input element
+    const input = document.createElement('input')
+    document.body.appendChild(input)
+    input.focus()
+
+    const event = new KeyboardEvent('keydown', {
+      key: 'z',
+      code: 'KeyZ',
+      metaKey: true,
+      bubbles: true,
+      cancelable: true,
+    })
+    document.dispatchEvent(event)
+
+    // Should NOT undo — input has focus
+    expect(editor.getDoc().nodes[doc.rootId].childOrder.length).toBe(1)
+    expect(event.defaultPrevented).toBe(false)
+
+    document.body.removeChild(input)
+  })
+
+  it('does not intercept Cmd+Z during text editing', () => {
+    const doc = createDoc('Test')
+    const editor = new MindmapEditor(doc)
+    const childId = editor.addChild(doc.rootId)
+    editor.startEditing(childId)
+
+    render(<Mindmap editor={editor} />)
+
+    const event = new KeyboardEvent('keydown', {
+      key: 'z',
+      code: 'KeyZ',
+      metaKey: true,
+      bubbles: true,
+      cancelable: true,
+    })
+    document.dispatchEvent(event)
+
+    // Should NOT undo — editing mode is active
+    expect(editor.getDoc().nodes[doc.rootId].childOrder.length).toBe(1)
+    expect(event.defaultPrevented).toBe(false)
+  })
+
+  it('cleans up document listener on unmount', () => {
+    const doc = createDoc('Test')
+    const editor = new MindmapEditor(doc)
+    editor.addChild(doc.rootId)
+
+    const { unmount } = render(<Mindmap editor={editor} />)
+    unmount()
+
+    // After unmount, Cmd+Z should not trigger undo
+    const event = new KeyboardEvent('keydown', {
+      key: 'z',
+      code: 'KeyZ',
+      metaKey: true,
+      bubbles: true,
+      cancelable: true,
+    })
+    document.dispatchEvent(event)
+
+    expect(editor.getDoc().nodes[doc.rootId].childOrder.length).toBe(1)
+  })
+})

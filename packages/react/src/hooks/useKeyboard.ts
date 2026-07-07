@@ -62,16 +62,9 @@ export function useKeyboard(
       const selectedId = state.selectedNodeId
       const doc = state.doc
 
-      // Undo/Redo (work without selection)
-      if (isMod(e) && e.key.toLowerCase() === 'z') {
-        if (e.shiftKey) {
-          editor.redo()
-        } else {
-          editor.undo()
-        }
-        e.preventDefault()
-        return
-      }
+      // Undo/Redo handled by global document listener in CanvasView
+      // (works regardless of canvas focus). Zoom shortcuts below still
+      // require canvas focus since they'''re canvas-specific.
 
       // Zoom shortcuts
       if (isMod(e) && (e.key === '=' || e.key === '+')) {
