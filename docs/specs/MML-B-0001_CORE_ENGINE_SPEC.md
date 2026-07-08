@@ -734,8 +734,10 @@ before DOM insertion (strip script, event handlers, javascript: URLs).
 moment. This is the standard pattern used by production node-based editors.
 
 Activation: double-click a node (or press Space/F2) → `editor.startEditing()`
-mounts TipTap in that node's div. Deactivation: press Escape or click away →
-`editor.stopEditing()` unmounts TipTap, node returns to static HTML.
+mounts TipTap in that node's div. New nodes created from keyboard shortcuts
+are selected and enter editing immediately. Deactivation: press Enter, Escape,
+or click away → content is committed, `editor.stopEditing()` unmounts TipTap,
+the edited node remains selected, and canvas hotkeys resume.
 
 ## Views
 
@@ -749,6 +751,7 @@ The primary spatial view. Features:
 - Node drag (reposition, calls `editor.setPosition`, sets manualPosition=true).
 - Inline rich-text editing (double-click / Space / F2).
 - Keyboard navigation between nodes.
+- Initial focus on last known node, or root when none is known.
 - Edge rendering (Bezier or straight lines between parent and child).
 - Background grid/dots.
 - Collapse/expand subtrees.
@@ -772,25 +775,27 @@ view owns data; both are projections of `EditorState`.
 
 ## Keyboard Navigation
 
-| Key                   | Action                                                           |
-| --------------------- | ---------------------------------------------------------------- |
-| Tab                   | Create child node of selected, enter edit mode                   |
-| Shift+Tab             | Promote node (move to parent's sibling level)                    |
-| Enter                 | Create sibling node after current, enter edit mode               |
-| ArrowUp / ArrowDown   | Navigate between siblings (per childOrder)                       |
-| ArrowLeft             | Navigate to parent                                               |
-| ArrowRight            | Navigate to first child                                          |
-| Delete / Backspace    | Delete node (with subtree). If node has children, confirm first. |
-| Space / F2            | Enter edit mode for selected node                                |
-| Escape                | Exit edit mode / deselect                                        |
-| Cmd/Ctrl+Z            | Undo                                                             |
-| Cmd/Ctrl+Shift+Z      | Redo                                                             |
-| Cmd/Ctrl+Plus / Minus | Zoom in / out                                                    |
-| Cmd/Ctrl+0            | Fit to screen                                                    |
+| Key                   | Action                                                          |
+| --------------------- | --------------------------------------------------------------- |
+| Tab                   | Create child node of selected, select it, enter edit mode       |
+| Shift+Tab             | Promote node (move to parent's sibling level)                   |
+| Enter                 | Create sibling node after current, select it, enter edit mode   |
+| ArrowUp / ArrowDown   | Navigate previous/next visible node in depth-first tree order   |
+| ArrowLeft             | Navigate to parent                                              |
+| ArrowRight            | Navigate to first child                                         |
+| Delete / Backspace    | Delete node with subtree, then select the deleted node's parent |
+| Space / F2            | Enter edit mode for selected node                               |
+| Escape                | Exit edit mode / deselect                                       |
+| Cmd/Ctrl+Z            | Undo                                                            |
+| Cmd/Ctrl+Shift+Z      | Redo                                                            |
+| Cmd/Ctrl+Plus / Minus | Zoom in / out                                                   |
+| Cmd/Ctrl+0            | Fit to screen                                                   |
 
 When a TipTap editor is active (editingNodeId is set), keyboard shortcuts are
-handled by TipTap. The mindmap keyboard handler is suspended during editing.
-Escape exits edit mode first, then deselects on second press.
+suspended during editing except for the edit-mode commit key. Enter commits
+TipTap content, exits edit mode, keeps the edited node selected, focuses the
+canvas, and resumes mindmap hotkeys. Escape exits edit mode first, then
+deselects on second press.
 
 ## Layout
 
@@ -804,9 +809,8 @@ When a node is collapsed (`collapsed === true`):
   are preserved in the document but not recomputed by `computeLayout`. When
   the node is expanded again, descendants reappear at their stored positions
   (or get re-laid-out if auto-positioned).
-- Keyboard: arrow navigation skips hidden descendants. ArrowRight on a
-  collapsed node expands it first (or navigates to first child, depending on
-  adapter configuration).
+- Keyboard: ArrowUp/ArrowDown skip hidden descendants. ArrowRight on a
+  collapsed node expands it first and navigates to its first child.
 
 ### Free-Float (default)
 

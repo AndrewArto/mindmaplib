@@ -71,6 +71,12 @@ function CanvasViewComponent({
   const keyboard = useKeyboard(editor, exitEditModeRef, confirmDelete)
   useNodeMeasures(editor, containerRef)
 
+  useEffect(() => {
+    if (editor.getState().editingNodeId === null) {
+      containerRef.current?.focus()
+    }
+  }, [editor])
+
   const { doc, viewport, selectedNodeId, editingNodeId, layoutMode } = state
   const containerW = containerRef.current?.clientWidth ?? 800
   const containerH = containerRef.current?.clientHeight ?? 600

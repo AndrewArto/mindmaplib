@@ -27,15 +27,17 @@ function setupEditor() {
 }
 
 describe('useKeyboard additional', () => {
-  it('Enter adds sibling', () => {
+  it('Enter adds, selects, and starts editing the new sibling', () => {
     const { editor } = setupEditor()
     const exitRef = createRef<(() => void) | null>()
     const { result } = renderHook(() => useKeyboard(editor, exitRef))
     act(() => result.current.onKeyDown(makeKbEvent('Enter')))
-    expect(
-      editor.getState().doc.nodes[editor.getState().doc.rootId].childOrder
-        .length,
-    ).toBe(3)
+    const state = editor.getState()
+    const childOrder = state.doc.nodes[state.doc.rootId].childOrder
+    const newSiblingId = childOrder[1]
+    expect(childOrder.length).toBe(3)
+    expect(state.selectedNodeId).toBe(newSiblingId)
+    expect(state.editingNodeId).toBe(newSiblingId)
   })
 
   it('Enter is no-op on root', () => {
@@ -63,6 +65,42 @@ describe('useKeyboard additional', () => {
     const { result } = renderHook(() => useKeyboard(editor, exitRef))
     act(() => result.current.onKeyDown(makeKbEvent('ArrowUp')))
     expect(editor.getState().selectedNodeId).toBe(child1)
+  })
+
+  it('ArrowDown walks the visible tree depth-first', () => {
+    const doc = createDoc('Test')
+    const editor = new MindmapEditor(doc)
+    const child1 = editor.addChild(doc.rootId)
+    const grandchild = editor.addChild(child1)
+    const child2 = editor.addChild(doc.rootId)
+    editor.select(doc.rootId)
+    const exitRef = createRef<(() => void) | null>()
+    const { result } = renderHook(() => useKeyboard(editor, exitRef))
+
+    act(() => result.current.onKeyDown(makeKbEvent('ArrowDown')))
+    expect(editor.getState().selectedNodeId).toBe(child1)
+    act(() => result.current.onKeyDown(makeKbEvent('ArrowDown')))
+    expect(editor.getState().selectedNodeId).toBe(grandchild)
+    act(() => result.current.onKeyDown(makeKbEvent('ArrowDown')))
+    expect(editor.getState().selectedNodeId).toBe(child2)
+  })
+
+  it('ArrowUp walks the visible tree in reverse depth-first order', () => {
+    const doc = createDoc('Test')
+    const editor = new MindmapEditor(doc)
+    const child1 = editor.addChild(doc.rootId)
+    const grandchild = editor.addChild(child1)
+    const child2 = editor.addChild(doc.rootId)
+    editor.select(child2)
+    const exitRef = createRef<(() => void) | null>()
+    const { result } = renderHook(() => useKeyboard(editor, exitRef))
+
+    act(() => result.current.onKeyDown(makeKbEvent('ArrowUp')))
+    expect(editor.getState().selectedNodeId).toBe(grandchild)
+    act(() => result.current.onKeyDown(makeKbEvent('ArrowUp')))
+    expect(editor.getState().selectedNodeId).toBe(child1)
+    act(() => result.current.onKeyDown(makeKbEvent('ArrowUp')))
+    expect(editor.getState().selectedNodeId).toBe(doc.rootId)
   })
 
   it('Delete removes node', () => {

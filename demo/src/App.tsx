@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Mindmap } from '@mindmaplib/react'
 import type {
   LayoutMode,
+  MindmapDoc,
   MindmapDocMeta,
   MindmapEditor,
 } from '@mindmaplib/core'
@@ -29,11 +30,33 @@ type ThemeName = 'triplea' | 'triplea-dark'
 type SaveState = 'idle' | 'saving' | 'saved' | 'error' | 'conflict'
 
 const layouts: LayoutMode[] = ['tree-horizontal', 'tree-vertical', 'radial']
+const FOCUS_STORAGE_PREFIX = 'mindmaplib:last-focused-node:'
+
+function getStoredFocusNodeId(doc: MindmapDoc): string | null {
+  try {
+    const nodeId = window.localStorage.getItem(
+      `${FOCUS_STORAGE_PREFIX}${doc.id}`,
+    )
+    if (!nodeId) return null
+    return Object.hasOwn(doc.nodes, nodeId) ? nodeId : null
+  } catch {
+    return null
+  }
+}
+
+function rememberFocusedNode(docId: string, nodeId: string | null): void {
+  if (!nodeId) return
+  try {
+    window.localStorage.setItem(`${FOCUS_STORAGE_PREFIX}${docId}`, nodeId)
+  } catch {
+    // Focus persistence is best-effort; storage failures must not break editing.
+  }
+}
 
 function createEditor(doc = createSampleDoc(), store: D1Store): MindmapEditor {
   const editor = new CoreMindmapEditor(doc, { store })
   editor.setLayout('tree-horizontal')
-  editor.select(editor.getDoc().rootId)
+  editor.select(getStoredFocusNodeId(editor.getDoc()) ?? editor.getDoc().rootId)
   return editor
 }
 
@@ -535,6 +558,9 @@ export function App(): React.ReactElement {
               gridType="dots"
               className="demo-mindmap"
               onChange={scheduleSave}
+              onSelectionChange={(nodeId) =>
+                rememberFocusedNode(editor.getDoc().id, nodeId)
+              }
             />
           </div>
         </section>

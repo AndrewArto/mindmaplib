@@ -10,8 +10,18 @@
 
 import { useCallback } from 'react'
 import type { KeyboardEvent } from 'react'
-import type { LayoutMode, MindmapEditor, MindmapNode } from '@mindmaplib/core'
-import { getChildren } from '@mindmaplib/core'
+import type {
+  LayoutMode,
+  MindmapDoc,
+  MindmapEditor,
+  MindmapNode,
+} from '@mindmaplib/core'
+import {
+  applyOp,
+  buildTransaction,
+  computeLayoutOps,
+  createDeleteNodeOp,
+} from '@mindmaplib/core'
 import type { KeyboardHandlers } from '../types.js'
 
 function isMod(e: KeyboardEvent | globalThis.KeyboardEvent): boolean {
@@ -30,6 +40,33 @@ function relayoutIfAutoMode(editor: MindmapEditor, mode: LayoutMode): void {
   if (mode !== 'free-float') {
     editor.setLayout(mode)
   }
+}
+
+function buildVisibleNodeIds(doc: MindmapDoc): string[] {
+  const result: string[] = []
+  const walk = (nodeId: string): void => {
+    const node = doc.nodes[nodeId]
+    if (!node) return
+    result.push(nodeId)
+    if (node.collapsed) return
+    for (const childId of node.childOrder) {
+      walk(childId)
+    }
+  }
+  walk(doc.rootId)
+  return result
+}
+
+function navigateVisibleNode(
+  visibleIds: string[],
+  currentId: string,
+  direction: 'next' | 'prev',
+): string | null {
+  const idx = visibleIds.indexOf(currentId)
+  if (idx === -1) return visibleIds[0] ?? null
+  const nextIdx = direction === 'next' ? idx + 1 : idx - 1
+  if (nextIdx < 0 || nextIdx >= visibleIds.length) return null
+  return visibleIds[nextIdx] ?? null
 }
 
 export function useKeyboard(
@@ -97,6 +134,7 @@ export function useKeyboard(
           } else {
             const newId = editor.addChild(selectedId)
             relayoutIfAutoMode(editor, state.layoutMode)
+            editor.select(newId)
             editor.startEditing(newId)
           }
           e.preventDefault()
@@ -106,23 +144,28 @@ export function useKeyboard(
           if (selected.parentId === null) return
           const newId = editor.addSibling(selectedId)
           relayoutIfAutoMode(editor, state.layoutMode)
+          editor.select(newId)
           editor.startEditing(newId)
           e.preventDefault()
           break
         }
         case 'ArrowUp': {
-          if (!selected.parentId) return
-          const siblings = getChildren(doc, selected.parentId)
-          const idx = siblings.findIndex((s) => s.id === selectedId)
-          if (idx > 0) editor.select(siblings[idx - 1].id)
+          const prev = navigateVisibleNode(
+            buildVisibleNodeIds(doc),
+            selectedId,
+            'prev',
+          )
+          if (prev) editor.select(prev)
           e.preventDefault()
           break
         }
         case 'ArrowDown': {
-          if (!selected.parentId) return
-          const siblings = getChildren(doc, selected.parentId)
-          const idx = siblings.findIndex((s) => s.id === selectedId)
-          if (idx < siblings.length - 1) editor.select(siblings[idx + 1].id)
+          const next = navigateVisibleNode(
+            buildVisibleNodeIds(doc),
+            selectedId,
+            'next',
+          )
+          if (next) editor.select(next)
           e.preventDefault()
           break
         }
@@ -144,9 +187,29 @@ export function useKeyboard(
         case 'Delete':
         case 'Backspace': {
           if (selected.parentId === null) return
+          const parentId = selected.parentId
           const doDelete = () => {
-            editor.deleteNode(selectedId)
-            editor.select(null)
+            const currentState = editor.getState()
+            const currentDoc = currentState.doc
+            const currentLayoutMode = currentState.layoutMode
+            if (!currentDoc.nodes[selectedId]) return
+            if (currentLayoutMode === 'free-float') {
+              editor.deleteNode(selectedId)
+            } else {
+              const deleteOp = createDeleteNodeOp(selectedId)
+              const docAfterDelete = applyOp(currentDoc, deleteOp)
+              const layoutOps = computeLayoutOps(
+                docAfterDelete,
+                currentLayoutMode,
+                {
+                  nodeMeasures: editor.getNodeMeasures(),
+                },
+              )
+              editor.apply(
+                buildTransaction(currentDoc, [deleteOp, ...layoutOps]),
+              )
+            }
+            editor.select(parentId)
           }
           if (selected.childOrder.length > 0) {
             // Async-safe: resolve Promise<boolean> | boolean before deleting

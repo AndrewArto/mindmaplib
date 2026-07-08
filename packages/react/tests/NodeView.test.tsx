@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { NodeView } from '../src/NodeView.js'
 import { MindmapEditor, createDoc } from '@mindmaplib/core'
 import StarterKit from '@tiptap/starter-kit'
@@ -125,6 +125,90 @@ describe('NodeView', () => {
     )
     const nodeEl = container.querySelector('[data-node-id]')
     expect(nodeEl?.getAttribute('data-node-id')).toBe('custom-id')
+  })
+
+  it('Enter exits text editing, keeps node selected, and returns focus to canvas', async () => {
+    const doc = createDoc('Test')
+    const editor = new MindmapEditor(doc)
+    const root = doc.nodes[doc.rootId]
+    editor.select(doc.rootId)
+    editor.startEditing(doc.rootId)
+    const exitRef = createRef<(() => void) | null>()
+    const extensions = [StarterKit, Link.configure({ openOnClick: false })]
+    const { container } = render(
+      <div className="mml-canvas" tabIndex={0}>
+        <NodeView
+          node={root}
+          editor={editor}
+          isSelected={true}
+          isEditing={true}
+          tiptapExtensions={extensions}
+          exitEditModeRef={exitRef}
+        />
+      </div>,
+    )
+
+    const editingContent = await waitFor(() => {
+      const el = container.querySelector(
+        '.mml-node-content--editing',
+      ) as HTMLElement | null
+      expect(el).toBeTruthy()
+      return el!
+    })
+
+    fireEvent.keyDown(editingContent, { key: 'Enter' })
+
+    await waitFor(() => {
+      expect(editor.getState().editingNodeId).toBeNull()
+    })
+    expect(editor.getState().selectedNodeId).toBe(doc.rootId)
+    await waitFor(() => {
+      expect(document.activeElement).toBe(
+        container.querySelector('.mml-canvas'),
+      )
+    })
+  })
+
+  it('Escape exits text editing, keeps node selected, and returns focus to canvas', async () => {
+    const doc = createDoc('Test')
+    const editor = new MindmapEditor(doc)
+    const root = doc.nodes[doc.rootId]
+    editor.select(doc.rootId)
+    editor.startEditing(doc.rootId)
+    const exitRef = createRef<(() => void) | null>()
+    const extensions = [StarterKit, Link.configure({ openOnClick: false })]
+    const { container } = render(
+      <div className="mml-canvas" tabIndex={0}>
+        <NodeView
+          node={root}
+          editor={editor}
+          isSelected={true}
+          isEditing={true}
+          tiptapExtensions={extensions}
+          exitEditModeRef={exitRef}
+        />
+      </div>,
+    )
+
+    const editingContent = await waitFor(() => {
+      const el = container.querySelector(
+        '.mml-node-content--editing',
+      ) as HTMLElement | null
+      expect(el).toBeTruthy()
+      return el!
+    })
+
+    fireEvent.keyDown(editingContent, { key: 'Escape' })
+
+    await waitFor(() => {
+      expect(editor.getState().editingNodeId).toBeNull()
+    })
+    expect(editor.getState().selectedNodeId).toBe(doc.rootId)
+    await waitFor(() => {
+      expect(document.activeElement).toBe(
+        container.querySelector('.mml-canvas'),
+      )
+    })
   })
 
   it('sanitizes generated HTML', () => {

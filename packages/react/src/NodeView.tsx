@@ -41,6 +41,7 @@ function EditingNodeContent({
   extensions: Extensions
 }): React.ReactElement {
   const persistedRef = useRef(false)
+  const persistRef = useRef<(() => void) | null>(null)
   const tiptapEditor = useTipTapEditor({
     extensions: extensions,
     content: toTipTapJSON(node.content),
@@ -62,19 +63,43 @@ function EditingNodeContent({
       }
     }
 
+    persistRef.current = persist
     exitEditModeRef.current = persist
+    tiptapEditor.commands.focus('end')
     return () => {
       persist()
+      if (persistRef.current === persist) {
+        persistRef.current = null
+      }
       if (exitEditModeRef.current === persist) {
         exitEditModeRef.current = null
       }
     }
   }, [tiptapEditor, editor, node.id, exitEditModeRef])
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLElement>) => {
+    const nativeEvent = e.nativeEvent as KeyboardEvent & {
+      isComposing?: boolean
+    }
+    if (e.key !== 'Enter' && e.key !== 'Escape') return
+    if (e.key === 'Enter' && nativeEvent.isComposing) return
+
+    e.preventDefault()
+    e.stopPropagation()
+    persistRef.current?.()
+    editor.select(node.id)
+    const canvas = e.currentTarget.closest('.mml-canvas') as HTMLElement | null
+    canvas?.focus()
+    window.setTimeout(() => {
+      if (editor.getState().editingNodeId === null) canvas?.focus()
+    }, 0)
+  }
+
   return (
     <EditorContent
       editor={tiptapEditor}
       className="mml-node-content mml-node-content--editing"
+      onKeyDownCapture={handleKeyDown}
     />
   )
 }

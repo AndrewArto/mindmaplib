@@ -54,6 +54,13 @@ function MindmapComponent(props: MindmapProps): React.ReactElement {
   }, [])
 
   useEffect(() => {
+    const current = editor.getState()
+    const selectedId = current.selectedNodeId
+    if (selectedId && Object.hasOwn(current.doc.nodes, selectedId)) return
+    editor.select(current.doc.rootId)
+  }, [editor, state.doc.id])
+
+  useEffect(() => {
     if (state.selectedNodeId !== lastSelectedId.current) {
       lastSelectedId.current = state.selectedNodeId
       onSelectionChange?.(state.selectedNodeId)

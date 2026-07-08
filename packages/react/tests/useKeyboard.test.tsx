@@ -28,8 +28,10 @@ describe('useKeyboard', () => {
       result.current.onKeyDown(makeKbEvent('Tab'))
     })
     const state = editor.getState()
+    const newId = state.doc.nodes[state.doc.rootId].childOrder[0]
     expect(state.doc.nodes[state.doc.rootId].childOrder.length).toBe(1)
-    expect(state.editingNodeId).not.toBeNull()
+    expect(state.selectedNodeId).toBe(newId)
+    expect(state.editingNodeId).toBe(newId)
   })
 
   it('suspends during editing except Escape', () => {
@@ -107,11 +109,11 @@ describe('useKeyboard', () => {
     expect(editor.getDoc().nodes[newId].position).not.toBeNull()
   })
 
-  it('deletes non-root subtrees when no confirmation callback is provided', async () => {
+  it('deletes non-root subtrees and focuses the parent', async () => {
     const doc = createDoc('Test')
     const editor = new MindmapEditor(doc)
     const childId = editor.addChild(doc.rootId)
-    editor.addChild(childId)
+    const grandchildId = editor.addChild(childId)
     editor.select(childId)
     const exitRef = createRef<(() => void) | null>()
     const { result } = renderHook(() => useKeyboard(editor, exitRef))
@@ -121,6 +123,69 @@ describe('useKeyboard', () => {
     })
 
     await Promise.resolve()
+    const state = editor.getState()
+    expect(state.doc.nodes[childId]).toBeUndefined()
+    expect(state.doc.nodes[grandchildId]).toBeUndefined()
+    expect(state.selectedNodeId).toBe(doc.rootId)
+  })
+
+  it('undo restores a deleted auto-layout subtree in one step', async () => {
+    const doc = createDoc('Test')
+    const editor = new MindmapEditor(doc)
+    const childId = editor.addChild(doc.rootId)
+    const grandchildId = editor.addChild(childId)
+    editor.setLayout('tree-horizontal')
+    editor.select(childId)
+    const exitRef = createRef<(() => void) | null>()
+    const { result } = renderHook(() => useKeyboard(editor, exitRef))
+
+    act(() => {
+      result.current.onKeyDown(makeKbEvent('Delete'))
+    })
+    await Promise.resolve()
     expect(editor.getDoc().nodes[childId]).toBeUndefined()
+
+    act(() => {
+      editor.undo()
+    })
+
+    const restored = editor.getDoc()
+    expect(restored.nodes[childId]).toBeDefined()
+    expect(restored.nodes[grandchildId]).toBeDefined()
+  })
+
+  it('uses the current layout mode when async delete confirmation resolves', async () => {
+    const doc = createDoc('Test')
+    const editor = new MindmapEditor(doc)
+    const childId = editor.addChild(doc.rootId)
+    editor.addChild(childId)
+    editor.setLayout('tree-horizontal')
+    editor.select(childId)
+    const exitRef = createRef<(() => void) | null>()
+    let resolveConfirm: ((value: boolean) => void) | null = null
+    const confirmDelete = vi.fn(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolveConfirm = resolve
+        }),
+    )
+    const { result } = renderHook(() =>
+      useKeyboard(editor, exitRef, confirmDelete),
+    )
+
+    act(() => {
+      result.current.onKeyDown(makeKbEvent('Delete'))
+    })
+    act(() => {
+      editor.setLayout('free-float')
+    })
+    resolveConfirm?.(true)
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(editor.getDoc().nodes[childId]).toBeUndefined()
+    expect(editor.getLastTransaction()?.ops.map((op) => op.type)).toEqual([
+      'deleteNode',
+    ])
   })
 })

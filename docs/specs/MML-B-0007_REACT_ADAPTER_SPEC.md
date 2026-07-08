@@ -174,9 +174,10 @@ function useEditor(editor: MindmapEditor): EditorState
 
 // Keyboard navigation handler. Returns a set of keyboard event handlers to
 // spread onto the canvas container. Suspended automatically when
-// state.editingNodeId is set (TipTap handles keyboard during editing).
+// state.editingNodeId is set, except edit-mode Enter commits content, exits
+// editing, and returns focus to canvas hotkeys.
 //
-// IMPORTANT: the Escape key during editing must persist TipTap content before
+// IMPORTANT: Escape and edit-mode Enter must persist TipTap content before
 // clearing editingNodeId. But the TipTap instance lives inside NodeView, not
 // in the keyboard hook's scope. To bridge this, the adapter registers an
 // exitEditMode callback via React context or a ref that NodeView populates
@@ -485,13 +486,14 @@ Lifecycle:
 2. `editor.startEditing(nodeId)` sets `editingNodeId`.
 3. `NodeView` detects `isEditing`, unmounts static HTML, mounts TipTap.
 4. TipTap editor created with content from `node.content`.
-5. User edits text. TipTap handles all keyboard input.
-6. User presses Escape or clicks away.
+5. User edits text. TipTap handles text input.
+6. User exits edit mode (Enter, Escape, or click-away).
 7. Adapter reads TipTap JSON, converts to `NodeContent`, calls
-   `editor.updateContent(nodeId, content)`.
+   `editor.updateContent(nodeId, content)`, and selects the edited node.
 8. `editor.stopEditing()` fires, clearing `editingNodeId`.
 9. `NodeView` unmounts TipTap, mounts static HTML with updated content.
-10. Keyboard navigation resumes.
+10. Canvas focus is restored when exiting via Enter; keyboard navigation
+    resumes without an extra mouse click.
 
 IMPORTANT: content is read and persisted BEFORE `stopEditing()` clears
 `editingNodeId`. If `stopEditing()` ran first, React would unmount the TipTap
@@ -719,9 +721,10 @@ handler checks `state.editingNodeId` first:
 ```typescript
 function onKeyDown(e: React.KeyboardEvent<HTMLElement>) {
   const state = editor.getState()
-  // Suspended during text editing — TipTap handles keyboard.
+  // Suspended during text editing — NodeView handles edit-mode Enter,
+  // and this hook handles Escape through the exitEditMode bridge.
   if (state.editingNodeId !== null) {
-    // Only intercept Escape (to exit edit mode).
+    // Only intercept Escape here (to exit edit mode).
     if (e.key === 'Escape') {
       // IMPORTANT: persist TipTap content BEFORE clearing editingNodeId.
       // The handler calls a helper that reads tiptapEditor.getJSON(),
@@ -741,35 +744,39 @@ function onKeyDown(e: React.KeyboardEvent<HTMLElement>) {
 
 ### Keymap
 
-| Key                   | Action                                                           |
-| --------------------- | ---------------------------------------------------------------- |
-| Tab                   | Create child node of selected, enter edit mode                   |
-| Shift+Tab             | Promote node (move to parent's sibling level)                    |
-| Enter                 | Create sibling node after current, enter edit mode               |
-| ArrowUp / ArrowDown   | Navigate between siblings (per childOrder)                       |
-| ArrowLeft             | Navigate to parent                                               |
-| ArrowRight            | Navigate to first child (expand if collapsed)                    |
-| Delete / Backspace    | Delete node (with subtree). If node has children, confirm first. |
-| Space / F2            | Enter edit mode for selected node                                |
-| Escape                | Exit edit mode / deselect                                        |
-| Cmd/Ctrl+Z            | Undo                                                             |
-| Cmd/Ctrl+Shift+Z      | Redo                                                             |
-| Cmd/Ctrl+Plus / Minus | Zoom in / out                                                    |
-| Cmd/Ctrl+0            | Fit to screen                                                    |
+| Key                   | Action                                                          |
+| --------------------- | --------------------------------------------------------------- |
+| Tab                   | Create child node of selected, select it, enter edit mode       |
+| Shift+Tab             | Promote node (move to parent's sibling level)                   |
+| Enter                 | Create sibling node after current, select it, enter edit mode   |
+| ArrowUp / ArrowDown   | Navigate previous/next visible node in depth-first tree order   |
+| ArrowLeft             | Navigate to parent                                              |
+| ArrowRight            | Navigate to first child (expand if collapsed)                   |
+| Delete / Backspace    | Delete node with subtree, then select the deleted node's parent |
+| Space / F2            | Enter edit mode for selected node                               |
+| Escape                | Exit edit mode / deselect                                       |
+| Cmd/Ctrl+Z            | Undo                                                            |
+| Cmd/Ctrl+Shift+Z      | Redo                                                            |
+| Cmd/Ctrl+Plus / Minus | Zoom in / out                                                   |
+| Cmd/Ctrl+0            | Fit to screen                                                   |
 
-Delete with children: the adapter shows a `window.confirm()` dialog. If the
-host provides a `confirmDelete?` callback prop, that replaces the native
-confirm. This is a PoC approach; a proper modal is a future enhancement.
+Delete with children: the adapter asks `confirmDelete?` when provided. If
+confirmed, the selected node and all descendants are removed and focus moves to
+the parent. Without a callback, deletion proceeds immediately.
 
 ### Focus Scoping
 
 Per MML-B-0002, keyboard shortcuts are scoped:
 
+- On open: the adapter preserves an already selected node as the last known
+  focus; if none is selected, it selects root and focuses the canvas.
 - Canvas has focus: canvas keymap active.
 - Outline has focus: outline-specific keymap (ArrowUp/Down for sibling
   navigation, ArrowLeft/Right for collapse/expand, Enter to select + focus
   canvas). Tab/Enter node-creation shortcuts are canvas-only.
-- Editing mode: all keyboard goes to TipTap.
+- Editing mode: text input goes to TipTap. Enter commits content, exits
+  editing, keeps the edited node selected, focuses the canvas, and re-enables
+  canvas hotkeys.
 
 Focus is tracked via `focusMode: 'none' | 'canvas' | 'outline' | 'editing'` in
 `EditorState` (to be added to core types per MML-B-0002).
@@ -883,9 +890,10 @@ Implements MML-B-0004.
 
 ### TipTap Editing
 
-TipTap provides its own accessibility (contenteditable with ARIA). The adapter
-does not interfere. When entering edit mode, focus moves to the TipTap editor.
-When exiting, focus returns to the canvas container.
+TipTap provides its own accessibility (contenteditable with ARIA). When
+entering edit mode, focus moves to the TipTap editor. Pressing Enter commits
+the text and returns focus to the canvas so node hotkeys work immediately.
+When exiting by Escape or click-away, the same content persistence path is used.
 
 ## Event and Callback API
 
@@ -1122,7 +1130,8 @@ packages/react/
 3. Confirm-delete dialog integration.
 4. CSS styles file (`styles.css`).
 5. Accessibility pass: ARIA roles, roving tabindex.
-6. Full keyboard flow integration test.
+6. Full keyboard flow integration test, including initial canvas focus and
+   parent focus after deletion.
 
 ## Test Plan
 
@@ -1133,7 +1142,9 @@ packages/react/
 - `useEditor`: subscribes on mount, unsubscribes on unmount, re-renders
   consumer on state change, returns current EditorState.
 - `useKeyboard`: each key combination produces correct editor method call
-  (Tab to addChild, Enter to addSibling, etc.), handler suspended when
+  (Tab to addChild, Enter to addSibling, etc.), new nodes are selected before
+  editing starts, ArrowUp/ArrowDown walk visible tree order, Delete/Backspace
+  focuses the parent after subtree deletion, handler suspended when
   editingNodeId is set, Escape exits edit mode during editing.
 - `useNodeMeasures`: ResizeObserver fires on element resize, measures
   debounced, measures reported to editor, observer disconnected on unmount.
@@ -1144,8 +1155,9 @@ packages/react/
   marks).
 - Generated HTML is sanitized: script tags stripped, event handlers removed,
   javascript: URLs removed, data: URLs removed.
-- Edit mode: TipTap editor mounts with correct content, Escape unmounts and
-  saves content, content update applied to editor.
+- Edit mode: TipTap editor mounts with correct content; Enter unmounts, saves
+  content, keeps the edited node selected, and returns focus to the canvas;
+  Escape unmounts and saves content, content update applied to editor.
 - Custom node renderer receives correct props (node, editor, isEditing, html).
 - React.memo prevents re-render when node reference unchanged.
 

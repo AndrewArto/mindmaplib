@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, fireEvent } from '@testing-library/react'
+import { render, fireEvent, waitFor } from '@testing-library/react'
 import { Mindmap } from '../src/Mindmap.js'
 import { MindmapEditor, createDoc } from '@mindmaplib/core'
 
@@ -46,6 +46,20 @@ describe('CanvasView pan/zoom', () => {
     const { container } = render(<Mindmap editor={editor} />)
     const canvas = container.querySelector('.mml-canvas') as HTMLElement
     expect(canvas.tabIndex).toBe(0)
+  })
+
+  it('does not autofocus canvas when mounted in edit mode', async () => {
+    const doc = createDoc('Test')
+    const editor = new MindmapEditor(doc)
+    editor.startEditing(doc.rootId)
+
+    const { container } = render(<Mindmap editor={editor} />)
+    const canvas = container.querySelector('.mml-canvas') as HTMLElement
+
+    await waitFor(() => {
+      expect(container.querySelector('.mml-node-content--editing')).toBeTruthy()
+    })
+    expect(document.activeElement).not.toBe(canvas)
   })
 
   it('canvas renders SVG edge layer', () => {
@@ -294,7 +308,7 @@ describe('MML-B-0011: focus and click-away', () => {
     expect(editor.getState().editingNodeId).toBeNull()
   })
 
-  it('B3b: clicking another node exits edit mode', () => {
+  it('B3b: clicking another node exits edit mode and focuses clicked node', () => {
     const doc = createDoc('Test')
     const editor = new MindmapEditor(doc)
     editor.setLayout('tree-horizontal')
@@ -309,7 +323,9 @@ describe('MML-B-0011: focus and click-away', () => {
 
     fireEvent.mouseDown(otherNode, { clientX: 200, clientY: 200 })
 
-    expect(editor.getState().editingNodeId).toBeNull()
+    const state = editor.getState()
+    expect(state.editingNodeId).toBeNull()
+    expect(state.selectedNodeId).toBe(id2)
   })
 })
 
@@ -327,9 +343,11 @@ describe('MML-B-0012: global undo/redo', () => {
 
     const { unmount } = render(<Mindmap editor={editor} />)
 
-    // Ensure canvas does NOT have focus (simulate focus on body)
-    document.body.focus()
-    expect(document.activeElement).toBe(document.body)
+    // Ensure canvas does NOT have focus (simulate focus on unrelated UI).
+    const button = document.createElement('button')
+    document.body.appendChild(button)
+    button.focus()
+    expect(document.activeElement).toBe(button)
 
     // Dispatch Cmd+Z as a document-level event (real user keydown)
     const event = new KeyboardEvent('keydown', {
@@ -346,6 +364,7 @@ describe('MML-B-0012: global undo/redo', () => {
     expect(editor.getDoc().nodes[doc.rootId].childOrder.length).toBe(0)
     expect(event.defaultPrevented).toBe(true)
 
+    document.body.removeChild(button)
     unmount()
   })
 

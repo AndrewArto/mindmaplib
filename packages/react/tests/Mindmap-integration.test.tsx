@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, fireEvent, act } from '@testing-library/react'
+import { render, fireEvent, act, waitFor } from '@testing-library/react'
 import { Mindmap } from '../src/Mindmap.js'
 import { MindmapEditor, createDoc } from '@mindmaplib/core'
 
@@ -69,6 +69,29 @@ describe('Mindmap integration', () => {
     const editor = makeEditor()
     const { container } = render(<Mindmap editor={editor} />)
     expect(container.querySelector('[role="application"]')).toBeTruthy()
+  })
+
+  it('opens with the root selected and canvas focused when no previous focus exists', async () => {
+    const doc = createDoc('Root')
+    const editor = new MindmapEditor(doc)
+    const { container } = render(
+      <Mindmap editor={editor} showOutline={false} />,
+    )
+
+    await waitFor(() => {
+      expect(editor.getState().selectedNodeId).toBe(doc.rootId)
+    })
+    expect(document.activeElement).toBe(container.querySelector('.mml-canvas'))
+  })
+
+  it('opens with the existing last selected node when one is already known', () => {
+    const doc = createDoc('Root')
+    const editor = new MindmapEditor(doc)
+    const childId = editor.addChild(doc.rootId)
+    editor.select(childId)
+    render(<Mindmap editor={editor} showOutline={false} />)
+
+    expect(editor.getState().selectedNodeId).toBe(childId)
   })
 
   it('renders outline tree with role=tree', () => {

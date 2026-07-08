@@ -81,29 +81,32 @@ interface ShortcutsPanelProps {
 Grouped into 3 sections, each with a small heading:
 
 #### Navigation
-| Key | Action |
-|---|---|
-| Up / Down arrows | Previous / next sibling |
-| Left / Right arrows | Parent / first child |
-| Esc | Deselect / exit edit mode |
+
+| Key                 | Action                    |
+| ------------------- | ------------------------- |
+| Up / Down arrows    | Previous / next sibling   |
+| Left / Right arrows | Parent / first child      |
+| Esc                 | Deselect / exit edit mode |
 
 #### Node editing
-| Key | Action |
-|---|---|
-| Tab | Add child |
-| Shift+Tab | Promote node |
-| Enter | Add sibling |
-| Space / F2 | Edit node text |
-| Double-click | Edit node text |
-| Delete / Backspace | Delete node |
+
+| Key                | Action         |
+| ------------------ | -------------- |
+| Tab                | Add child      |
+| Shift+Tab          | Promote node   |
+| Enter              | Add sibling    |
+| Space / F2         | Edit node text |
+| Double-click       | Edit node text |
+| Delete / Backspace | Delete node    |
 
 #### View & history
-| Key | Action |
-|---|---|
-| Cmd+Z | Undo |
-| Cmd+Shift+Z | Redo |
-| Scroll | Zoom |
-| Cmd+0 | Fit to screen |
+
+| Key         | Action        |
+| ----------- | ------------- |
+| Cmd+Z       | Undo          |
+| Cmd+Shift+Z | Redo          |
+| Scroll      | Zoom          |
+| Cmd+0       | Fit to screen |
 
 ### Key notation
 
@@ -123,6 +126,7 @@ Grouped into 3 sections, each with a small heading:
 - Compact spacing, no wasted vertical space
 
 CSS classes to add:
+
 ```
 .shortcuts-panel        /* container */
 .shortcuts-header       /* clickable header row */
