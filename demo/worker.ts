@@ -32,31 +32,25 @@ function json(body: unknown, status = 200): Response {
   })
 }
 
-function extractDocMeta(docJson: string): { title: string; version: number } {
+function extractDocMeta(docJson: string): {
+  id: string | null
+  title: string
+  version: number
+} {
   try {
     const parsed = JSON.parse(docJson) as {
-      doc?: { meta?: { title?: string }; version?: number }
+      doc?: { id?: string; meta?: { title?: string }; version?: number }
     }
     return {
+      id:
+        typeof parsed.doc?.id === 'string' && parsed.doc.id.length > 0
+          ? parsed.doc.id
+          : null,
       title: parsed.doc?.meta?.title ?? 'Untitled Mindmap',
       version: parsed.doc?.version ?? 0,
     }
   } catch {
-    return { title: 'Untitled Mindmap', version: 0 }
-  }
-}
-
-/** Replace the doc.id inside a serialized wrapper with the server-assigned id. */
-function rewriteDocId(docJson: string, newId: string): string {
-  try {
-    const parsed = JSON.parse(docJson) as {
-      schemaVersion: number
-      doc: { id: string; [k: string]: unknown }
-    }
-    parsed.doc.id = newId
-    return JSON.stringify(parsed)
-  } catch {
-    return docJson
+    return { id: null, title: 'Untitled Mindmap', version: 0 }
   }
 }
 
@@ -99,17 +93,14 @@ export default {
     // POST /api/sessions — create
     if (request.method === 'POST' && !sessionId) {
       const body = (await request.json()) as { doc: string }
-      const id = crypto.randomUUID()
-      // Rewrite the doc.id to match the server-assigned row id so reloads
-      // and subsequent saves target the correct row.
-      const docJson = rewriteDocId(body.doc, id)
-      const { title, version } = extractDocMeta(docJson)
+      const { id: docId, title, version } = extractDocMeta(body.doc)
+      const id = docId ?? crypto.randomUUID()
       const now = new Date().toISOString()
 
       const stmt = env.MINDMAP_DB.prepare(
         'INSERT INTO sessions (id, title, doc_json, version, created, updated) VALUES (?, ?, ?, ?, ?, ?)',
       )
-      await stmt.bind(id, title, docJson, version, now, now).run()
+      await stmt.bind(id, title, body.doc, version, now, now).run()
       return json({ id, title, version })
     }
 

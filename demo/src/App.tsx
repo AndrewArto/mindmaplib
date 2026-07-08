@@ -6,8 +6,7 @@ import type {
   MindmapDocMeta,
   MindmapEditor,
 } from '@mindmaplib/core'
-import { MindmapEditor as CoreMindmapEditor } from '@mindmaplib/core'
-import { D1Store } from './d1store'
+import { createDoc, MindmapEditor as CoreMindmapEditor } from '@mindmaplib/core'
 import {
   LayoutIcon,
   layoutLabel,
@@ -17,12 +16,19 @@ import {
   IconPanelToggle,
   IconKeyboard,
 } from './icons'
-import { createSampleDoc } from './sample'
+import { createSampleDocuments } from './sample'
 import {
   KeyboardShortcutsOverlay,
   getPlatformModifier,
   isEditableTarget,
 } from './KeyboardShortcutsOverlay'
+import { D1Store, exportDocumentJson } from './d1store'
+import {
+  addChildNodeFromToolbar,
+  addSiblingNodeFromToolbar,
+  deleteSelectedNodeFromToolbar,
+} from './editorActions'
+import { consumeGlobalShortcut, isUndoRedoShortcut } from './keyboardGuards'
 import { getResponsiveOutlineWidth } from './responsive'
 
 type ThemeName = 'triplea' | 'triplea-dark'
@@ -30,6 +36,7 @@ type ThemeName = 'triplea' | 'triplea-dark'
 type SaveState = 'idle' | 'saving' | 'saved' | 'error' | 'conflict'
 
 const layouts: LayoutMode[] = ['tree-horizontal', 'tree-vertical', 'radial']
+
 const FOCUS_STORAGE_PREFIX = 'mindmaplib:last-focused-node:'
 
 function getStoredFocusNodeId(doc: MindmapDoc): string | null {
@@ -37,8 +44,17 @@ function getStoredFocusNodeId(doc: MindmapDoc): string | null {
     const nodeId = window.localStorage.getItem(
       `${FOCUS_STORAGE_PREFIX}${doc.id}`,
     )
-    if (!nodeId) return null
-    return Object.hasOwn(doc.nodes, nodeId) ? nodeId : null
+    if (!nodeId || !Object.hasOwn(doc.nodes, nodeId)) return null
+
+    let cursor = doc.nodes[nodeId]
+    let visibleNodeId = nodeId
+    while (cursor.parentId !== null) {
+      const parent = doc.nodes[cursor.parentId]
+      if (!parent) return null
+      if (parent.collapsed) visibleNodeId = parent.id
+      cursor = parent
+    }
+    return visibleNodeId
   } catch {
     return null
   }
@@ -53,11 +69,15 @@ function rememberFocusedNode(docId: string, nodeId: string | null): void {
   }
 }
 
-function createEditor(doc = createSampleDoc(), store: D1Store): MindmapEditor {
+function createEditor(doc: MindmapDoc, store: D1Store): MindmapEditor {
   const editor = new CoreMindmapEditor(doc, { store })
   editor.setLayout('tree-horizontal')
   editor.select(getStoredFocusNodeId(editor.getDoc()) ?? editor.getDoc().rootId)
   return editor
+}
+
+function createBlankDoc(): MindmapDoc {
+  return createDoc('Untitled mindmap')
 }
 
 function formatUpdated(value: string): string {
@@ -87,6 +107,54 @@ function setSessionUrl(id: string | null): void {
 
 function getInitialViewportWidth(): number {
   return typeof window === 'undefined' ? 1024 : window.innerWidth
+}
+
+function clampZoom(zoom: number): number {
+  return Math.min(Math.max(zoom, 0.1), 4)
+}
+
+function slugify(value: string): string {
+  const slug = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  return slug || 'mindmap'
+}
+
+function focusMindmapInteractionTarget(
+  host: HTMLElement | null,
+  editor: MindmapEditor,
+): void {
+  if (!host) return
+
+  const { editingNodeId } = editor.getState()
+  if (editingNodeId) {
+    const editingNode = Array.from(
+      host.querySelectorAll<HTMLElement>('[data-node-id]'),
+    ).find((node) => node.dataset.nodeId === editingNodeId)
+    const editable = editingNode?.querySelector<HTMLElement>(
+      '.ProseMirror, [contenteditable="true"]',
+    )
+    if (editable) {
+      editable.focus()
+      return
+    }
+  }
+
+  host.querySelector<HTMLElement>('.mml-canvas')?.focus()
+}
+
+function queueMindmapFocus(
+  host: HTMLElement | null,
+  editor: MindmapEditor,
+): void {
+  const run = () => focusMindmapInteractionTarget(host, editor)
+  if (typeof window.requestAnimationFrame === 'function') {
+    window.requestAnimationFrame(() => window.setTimeout(run, 0))
+  } else {
+    window.setTimeout(run, 0)
+  }
 }
 
 function BrandMark(): React.ReactElement {
@@ -132,9 +200,6 @@ function BrandMark(): React.ReactElement {
   )
 }
 
-/**
- * Theme toggle — sun/moon icons, clean and universally understood.
- */
 function ThemeToggle({
   theme,
   onChange,
@@ -201,7 +266,7 @@ const statusText: Record<SaveState, string> = {
 export function App(): React.ReactElement {
   const store = useMemo(() => new D1Store(), [])
   const [editor, setEditor] = useState<MindmapEditor>(() =>
-    createEditor(createSampleDoc(), store),
+    createEditor(createSampleDocuments()[0]!, store),
   )
   const [sessions, setSessions] = useState<MindmapDocMeta[]>([])
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
@@ -212,14 +277,24 @@ export function App(): React.ReactElement {
   const [layout, setLayout] = useState<LayoutMode>('tree-horizontal')
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [editorRevision, setEditorRevision] = useState(0)
   const saveTimer = useRef<number | null>(null)
   const previousFocus = useRef<HTMLElement | null>(null)
   const shortcutsButtonRef = useRef<HTMLButtonElement>(null)
+  const importInputRef = useRef<HTMLInputElement>(null)
+  const mapHostRef = useRef<HTMLDivElement>(null)
   const shortcutModifier = useMemo(() => getPlatformModifier(), [])
   const outlineWidth = useMemo(
     () => getResponsiveOutlineWidth(viewportWidth),
     [viewportWidth],
   )
+  const editorRef = useRef(editor)
+  editorRef.current = editor
+  const editorState = editor.getState()
+  const selectedNode = editorState.selectedNodeId
+    ? editorState.doc.nodes[editorState.selectedNodeId]
+    : null
+  const currentDoc = editor.getDoc()
 
   const refreshSessions = useCallback(async () => {
     const rows = await store.list()
@@ -245,35 +320,112 @@ export function App(): React.ReactElement {
     [store],
   )
 
-  const createSession = useCallback(async () => {
-    setErrorMessage(null)
-    const doc = createSampleDoc()
-    try {
-      const id = await store.create(doc)
-      await loadSession(id)
-      await refreshSessions()
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
+  const openLocalFallback = useCallback(
+    (doc: MindmapDoc, message: string) => {
       setErrorMessage(message)
       setSaveState('error')
-      const fallback = createEditor(doc, store)
-      setEditor(fallback)
+      setEditor(createEditor(doc, store))
       setActiveSessionId(null)
       setSessionUrl(null)
-    }
-  }, [loadSession, refreshSessions, store])
+    },
+    [store],
+  )
+
+  const persistNewDocument = useCallback(
+    async (doc: MindmapDoc) => {
+      setErrorMessage(null)
+      try {
+        const id = await store.create(doc)
+        await loadSession(id)
+        await refreshSessions()
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        openLocalFallback(doc, message)
+      }
+    },
+    [loadSession, openLocalFallback, refreshSessions, store],
+  )
+
+  const createSession = useCallback(async () => {
+    await persistNewDocument(createBlankDoc())
+  }, [persistNewDocument])
+
+  const createSampleSession = useCallback(async () => {
+    const [doc] = createSampleDocuments()
+    await persistNewDocument(doc)
+  }, [persistNewDocument])
 
   useEffect(() => {
-    void refreshSessions()
-    const id = getSessionIdFromUrl()
-    if (id) void loadSession(id)
-  }, [loadSession, refreshSessions])
+    let cancelled = false
+    const initialEditor = editorRef.current
+    const initialState = initialEditor.getState()
+    const initialize = async () => {
+      try {
+        const rows = await store.list()
+        if (cancelled) return
+        setSessions(rows)
+        const urlSessionId = getSessionIdFromUrl()
+        if (urlSessionId) {
+          await loadSession(urlSessionId)
+          return
+        }
+
+        const firstSessionId = rows[0]?.id
+        if (!firstSessionId) return
+        const currentState = editorRef.current.getState()
+        const untouched =
+          currentState.doc.id === initialState.doc.id &&
+          currentState.doc.version === initialState.doc.version &&
+          currentState.selectedNodeId === initialState.selectedNodeId &&
+          currentState.editingNodeId === initialState.editingNodeId
+        if (untouched) await loadSession(firstSessionId)
+      } catch (error) {
+        if (cancelled) return
+        const message = error instanceof Error ? error.message : String(error)
+        setErrorMessage(message)
+        setSaveState('error')
+      }
+    }
+    void initialize()
+    return () => {
+      cancelled = true
+    }
+  }, [loadSession, store])
 
   useEffect(() => {
     return () => {
       if (saveTimer.current !== null) window.clearTimeout(saveTimer.current)
     }
   }, [])
+
+  useEffect(() => {
+    let lastDocId = editor.getDoc().id
+    let lastVersion = editor.getDoc().version
+    let lastSelectedNodeId = editor.getState().selectedNodeId
+    let lastEditingNodeId = editor.getState().editingNodeId
+
+    const unsubscribe = editor.subscribe((state) => {
+      const selectionChanged =
+        state.doc.id !== lastDocId ||
+        state.selectedNodeId !== lastSelectedNodeId
+      const appStateChanged =
+        selectionChanged ||
+        state.doc.version !== lastVersion ||
+        state.editingNodeId !== lastEditingNodeId
+
+      if (!appStateChanged) return
+
+      if (selectionChanged) {
+        rememberFocusedNode(state.doc.id, state.selectedNodeId)
+      }
+      lastDocId = state.doc.id
+      lastVersion = state.doc.version
+      lastSelectedNodeId = state.selectedNodeId
+      lastEditingNodeId = state.editingNodeId
+      setEditorRevision((value) => value + 1)
+    })
+    return unsubscribe
+  }, [editor])
 
   useEffect(() => {
     const handleResize = () => setViewportWidth(window.innerWidth)
@@ -301,22 +453,29 @@ export function App(): React.ReactElement {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (showShortcuts) {
         if (event.key === 'Escape') {
-          event.preventDefault()
-          event.stopPropagation()
+          consumeGlobalShortcut(event)
           closeShortcuts()
+          return
+        }
+        if (isUndoRedoShortcut(event)) {
+          consumeGlobalShortcut(event)
         }
         return
       }
 
-      if (event.key === '?' && !isEditableTarget(event.target)) {
+      if (
+        event.key === '?' &&
+        editor.getState().editingNodeId === null &&
+        !isEditableTarget(event.target)
+      ) {
         event.preventDefault()
         openShortcuts()
       }
     }
 
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [closeShortcuts, openShortcuts, showShortcuts])
+    document.addEventListener('keydown', handleKeyDown, true)
+    return () => document.removeEventListener('keydown', handleKeyDown, true)
+  }, [closeShortcuts, editor, openShortcuts, showShortcuts])
 
   const scheduleSave = useCallback(() => {
     if (!activeSessionId) return
@@ -339,38 +498,180 @@ export function App(): React.ReactElement {
     }, 2000)
   }, [activeSessionId, editor, refreshSessions])
 
+  const focusMindmapAfterToolbarAction = useCallback(() => {
+    queueMindmapFocus(mapHostRef.current, editor)
+  }, [editor])
+
   const applyLayout = useCallback(
     (mode: LayoutMode) => {
       setLayout(mode)
       editor.setLayout(mode)
       editor.fitToScreen()
+      focusMindmapAfterToolbarAction()
     },
-    [editor],
+    [editor, focusMindmapAfterToolbarAction],
+  )
+
+  const addChildNode = useCallback(() => {
+    addChildNodeFromToolbar(editor)
+    focusMindmapAfterToolbarAction()
+  }, [editor, focusMindmapAfterToolbarAction])
+
+  const addSiblingNode = useCallback(() => {
+    addSiblingNodeFromToolbar(editor)
+    focusMindmapAfterToolbarAction()
+  }, [editor, focusMindmapAfterToolbarAction])
+
+  const deleteSelectedNode = useCallback(() => {
+    deleteSelectedNodeFromToolbar(editor)
+    focusMindmapAfterToolbarAction()
+  }, [editor, focusMindmapAfterToolbarAction])
+
+  const zoomBy = useCallback(
+    (factor: number) => {
+      const state = editor.getState()
+      editor.setViewport({
+        ...state.viewport,
+        zoom: clampZoom(state.viewport.zoom * factor),
+      })
+      focusMindmapAfterToolbarAction()
+    },
+    [editor, focusMindmapAfterToolbarAction],
+  )
+
+  const exportCurrentDocument = useCallback(() => {
+    if (editor.getState().editingNodeId !== null) {
+      setErrorMessage('Finish editing before exporting.')
+      return
+    }
+    const doc = editor.getDoc()
+    const blob = new Blob([exportDocumentJson(doc)], {
+      type: 'application/json',
+    })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${slugify(doc.meta.title)}.mmp.json`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  }, [editor])
+
+  const importDocument = useCallback(
+    async (file: File) => {
+      try {
+        if (editor.getState().editingNodeId !== null) {
+          setErrorMessage('Finish editing before importing.')
+          return
+        }
+        setErrorMessage(null)
+        const text = await file.text()
+        const id = await store.importJson(text)
+        await loadSession(id)
+        await refreshSessions()
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        setErrorMessage(`Import failed: ${message}`)
+        setSaveState('error')
+      }
+    },
+    [editor, loadSession, refreshSessions, store],
+  )
+
+  const saveActiveBeforeDocumentAction =
+    useCallback(async (): Promise<boolean> => {
+      if (editor.getState().editingNodeId !== null) {
+        setErrorMessage('Finish editing before using document actions.')
+        return false
+      }
+      if (!activeSessionId) return true
+      if (saveTimer.current !== null) {
+        window.clearTimeout(saveTimer.current)
+        saveTimer.current = null
+      }
+      try {
+        await editor.save()
+        setSaveState('saved')
+        await refreshSessions()
+        return true
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        setErrorMessage(message)
+        setSaveState(
+          message.toLowerCase().includes('conflict') ? 'conflict' : 'error',
+        )
+        return false
+      }
+    }, [activeSessionId, editor, refreshSessions])
+
+  const renameSession = useCallback(
+    async (session: MindmapDocMeta) => {
+      const title = window.prompt('Rename map', session.title)?.trim()
+      if (!title) return
+      if (session.id === activeSessionId) {
+        const saved = await saveActiveBeforeDocumentAction()
+        if (!saved) return
+      }
+      await store.rename(session.id, title)
+      if (session.id === activeSessionId) await loadSession(session.id)
+      await refreshSessions()
+    },
+    [
+      activeSessionId,
+      loadSession,
+      refreshSessions,
+      saveActiveBeforeDocumentAction,
+      store,
+    ],
+  )
+
+  const duplicateSession = useCallback(
+    async (id: string) => {
+      if (id === activeSessionId) {
+        const saved = await saveActiveBeforeDocumentAction()
+        if (!saved) return
+      }
+      const copyId = await store.duplicate(id)
+      await loadSession(copyId)
+      await refreshSessions()
+    },
+    [
+      activeSessionId,
+      loadSession,
+      refreshSessions,
+      saveActiveBeforeDocumentAction,
+      store,
+    ],
   )
 
   const deleteSession = useCallback(
     async (id: string) => {
+      const confirmed = window.confirm('Delete this map from D1?')
+      if (!confirmed) return
       await store.delete(id)
-      await refreshSessions()
+      const rows = await store.list()
+      setSessions(rows)
       if (id === activeSessionId) {
-        setActiveSessionId(null)
-        setSessionUrl(null)
-        setEditor(createEditor(createSampleDoc(), store))
-        setSaveState('idle')
+        const nextId = rows[0]?.id ?? null
+        if (nextId) {
+          await loadSession(nextId)
+        } else {
+          setActiveSessionId(null)
+          setSessionUrl(null)
+          setEditor(createEditor(createBlankDoc(), store))
+          setSaveState('idle')
+        }
       }
     },
-    [activeSessionId, refreshSessions, store],
+    [activeSessionId, loadSession, store],
   )
 
-  const resetLocalDemo = useCallback(() => {
-    setActiveSessionId(null)
-    setSessionUrl(null)
-    setEditor(createEditor(createSampleDoc(), store))
-    setSaveState('idle')
-  }, [store])
-
   return (
-    <div className={`demo-shell theme-${theme}`}>
+    <div
+      className={`demo-shell theme-${theme}`}
+      data-editor-revision={editorRevision}
+    >
       <header className="topbar">
         <div className="brand-block">
           <div className="brand-mark">
@@ -383,14 +684,14 @@ export function App(): React.ReactElement {
           <button
             type="button"
             className="btn btn-primary"
-            onClick={createSession}
+            onClick={() => void createSession()}
           >
             New map
           </button>
           <button
             type="button"
             className="btn btn-secondary"
-            onClick={resetLocalDemo}
+            onClick={() => void createSampleSession()}
           >
             Sample
           </button>
@@ -434,12 +735,33 @@ export function App(): React.ReactElement {
                         v{session.version} · {formatUpdated(session.updated)}
                       </small>
                     </button>
-                    <button
-                      type="button"
-                      className="delete-button"
-                      aria-label={`Delete ${session.title}`}
-                      onClick={() => void deleteSession(session.id)}
-                    />
+                    <div className="session-actions">
+                      <button
+                        type="button"
+                        className="session-action-button"
+                        aria-label={`Rename ${session.title}`}
+                        title="Rename"
+                        onClick={() => void renameSession(session)}
+                      >
+                        R
+                      </button>
+                      <button
+                        type="button"
+                        className="session-action-button"
+                        aria-label={`Duplicate ${session.title}`}
+                        title="Duplicate"
+                        onClick={() => void duplicateSession(session.id)}
+                      >
+                        D
+                      </button>
+                      <button
+                        type="button"
+                        className="delete-button"
+                        aria-label={`Delete ${session.title}`}
+                        title="Delete"
+                        onClick={() => void deleteSession(session.id)}
+                      />
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -471,12 +793,47 @@ export function App(): React.ReactElement {
         <section className="map-card" aria-label="Mindmap editor">
           <div className="map-toolbar">
             <div className="map-title-block">
-              <strong>{editor.getDoc().meta.title}</strong>
+              <strong>{currentDoc.meta.title}</strong>
               <span className={`status-badge ${saveState}`}>
                 {statusText[saveState]}
               </span>
             </div>
             <div className="toolbar-buttons">
+              <div className="toolbar-group">
+                <button
+                  type="button"
+                  className="icon-button text-icon-button"
+                  title="Add child"
+                  aria-label="Add child"
+                  onClick={addChildNode}
+                >
+                  +C
+                </button>
+                <button
+                  type="button"
+                  className="icon-button text-icon-button"
+                  title="Add sibling"
+                  aria-label="Add sibling"
+                  onClick={addSiblingNode}
+                >
+                  +S
+                </button>
+                <button
+                  type="button"
+                  className="icon-button text-icon-button"
+                  title="Delete selected node"
+                  aria-label="Delete selected node"
+                  disabled={
+                    editorState.editingNodeId !== null ||
+                    !selectedNode ||
+                    selectedNode.parentId === null
+                  }
+                  onClick={deleteSelectedNode}
+                >
+                  Del
+                </button>
+              </div>
+              <span className="toolbar-divider" />
               <div className="toolbar-group">
                 {layouts.map((mode) => (
                   <button
@@ -494,10 +851,31 @@ export function App(): React.ReactElement {
               <span className="toolbar-divider" />
               <button
                 type="button"
+                className="icon-button text-icon-button"
+                title="Zoom out"
+                aria-label="Zoom out"
+                onClick={() => zoomBy(1 / 1.2)}
+              >
+                −
+              </button>
+              <button
+                type="button"
+                className="icon-button text-icon-button"
+                title="Zoom in"
+                aria-label="Zoom in"
+                onClick={() => zoomBy(1.2)}
+              >
+                +
+              </button>
+              <button
+                type="button"
                 className="icon-button"
                 title="Fit to screen"
                 aria-label="Fit to screen"
-                onClick={() => editor.fitToScreen()}
+                onClick={() => {
+                  editor.fitToScreen()
+                  focusMindmapAfterToolbarAction()
+                }}
               >
                 <IconFit size={16} />
               </button>
@@ -506,7 +884,11 @@ export function App(): React.ReactElement {
                 className="icon-button"
                 title="Undo"
                 aria-label="Undo"
-                onClick={() => editor.undo()}
+                disabled={!editor.canUndo()}
+                onClick={() => {
+                  editor.undo()
+                  focusMindmapAfterToolbarAction()
+                }}
               >
                 <IconUndo size={16} />
               </button>
@@ -515,10 +897,44 @@ export function App(): React.ReactElement {
                 className="icon-button"
                 title="Redo"
                 aria-label="Redo"
-                onClick={() => editor.redo()}
+                disabled={!editor.canRedo()}
+                onClick={() => {
+                  editor.redo()
+                  focusMindmapAfterToolbarAction()
+                }}
               >
                 <IconRedo size={16} />
               </button>
+              <span className="toolbar-divider" />
+              <button
+                type="button"
+                className="icon-button text-icon-button"
+                title="Import JSON"
+                aria-label="Import JSON"
+                onClick={() => importInputRef.current?.click()}
+              >
+                In
+              </button>
+              <button
+                type="button"
+                className="icon-button text-icon-button"
+                title="Export JSON"
+                aria-label="Export JSON"
+                onClick={exportCurrentDocument}
+              >
+                Out
+              </button>
+              <input
+                ref={importInputRef}
+                hidden
+                type="file"
+                accept="application/json,.json,.mmp.json"
+                onChange={(event) => {
+                  const file = event.currentTarget.files?.[0]
+                  if (file) void importDocument(file)
+                  event.currentTarget.value = ''
+                }}
+              />
               <span className="toolbar-divider" />
               <button
                 type="button"
@@ -546,9 +962,9 @@ export function App(): React.ReactElement {
 
           {errorMessage && <div className="error-banner">{errorMessage}</div>}
 
-          <div className="map-host">
+          <div ref={mapHostRef} className="map-host">
             <Mindmap
-              key={editor.getDoc().id}
+              key={currentDoc.id}
               editor={editor}
               showOutline={showOutline}
               layoutMode={layout}
@@ -559,7 +975,7 @@ export function App(): React.ReactElement {
               className="demo-mindmap"
               onChange={scheduleSave}
               onSelectionChange={(nodeId) =>
-                rememberFocusedNode(editor.getDoc().id, nodeId)
+                rememberFocusedNode(currentDoc.id, nodeId)
               }
             />
           </div>

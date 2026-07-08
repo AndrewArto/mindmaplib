@@ -7,7 +7,7 @@ import type {
   MindmapStore,
   SaveResult,
 } from '@mindmaplib/core'
-import { serialize, deserialize } from '@mindmaplib/core'
+import { createDoc, deserialize, serialize } from '@mindmaplib/core'
 
 interface SessionRow {
   id: string
@@ -15,6 +15,36 @@ interface SessionRow {
   doc_json: string
   version: number
   updated: string
+}
+
+function nowIso(): string {
+  return new Date().toISOString()
+}
+
+function isJsonResponse(resp: Response): boolean {
+  return resp.headers.get('content-type')?.includes('application/json') ?? false
+}
+
+function makeNewDocumentId(): string {
+  return createDoc('New mindmap').id
+}
+
+function cloneDocument(doc: MindmapDoc, title: string): MindmapDoc {
+  const timestamp = nowIso()
+  return {
+    ...doc,
+    id: makeNewDocumentId(),
+    version: 0,
+    meta: {
+      title,
+      created: timestamp,
+      updated: timestamp,
+    },
+  }
+}
+
+export function exportDocumentJson(doc: MindmapDoc): string {
+  return serialize(doc)
 }
 
 export class D1Store implements MindmapStore {
@@ -26,7 +56,7 @@ export class D1Store implements MindmapStore {
 
   async list(): Promise<MindmapDocMeta[]> {
     const resp = await fetch(`${this.baseUrl}/api/sessions`)
-    if (!resp.ok) return []
+    if (!resp.ok || !isJsonResponse(resp)) return []
     const rows = (await resp.json()) as SessionRow[]
     return rows.map((r) => ({
       id: r.id,
@@ -38,9 +68,13 @@ export class D1Store implements MindmapStore {
 
   async load(docId: string): Promise<MindmapDoc | null> {
     const resp = await fetch(`${this.baseUrl}/api/sessions/${docId}`)
-    if (!resp.ok) return null
-    const data = (await resp.json()) as { doc: string }
-    return deserialize(data.doc)
+    if (!resp.ok || !isJsonResponse(resp)) return null
+    const data = (await resp.json()) as { id?: string; doc: string }
+    const doc = deserialize(data.doc)
+    if (data.id && data.id !== doc.id) {
+      return { ...doc, id: data.id }
+    }
+    return doc
   }
 
   async save(
@@ -58,7 +92,7 @@ export class D1Store implements MindmapStore {
       body,
     })
 
-    if (resp.status === 409) {
+    if (resp.status === 409 && isJsonResponse(resp)) {
       const server = (await resp.json()) as {
         currentVersion?: number
       }
@@ -69,7 +103,7 @@ export class D1Store implements MindmapStore {
       }
     }
 
-    if (!resp.ok) {
+    if (!resp.ok || !isJsonResponse(resp)) {
       return { saved: false, conflict: false }
     }
 
@@ -88,9 +122,40 @@ export class D1Store implements MindmapStore {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ doc: docJson }),
     })
-    if (!resp.ok) throw new Error(`Failed to create session: ${resp.status}`)
+    if (!resp.ok || !isJsonResponse(resp)) {
+      throw new Error(`Failed to create session: ${resp.status}`)
+    }
     const result = (await resp.json()) as { id: string }
     return result.id
+  }
+
+  async rename(docId: string, title: string): Promise<void> {
+    const doc = await this.load(docId)
+    if (!doc) throw new Error('Session not found')
+    const renamed: MindmapDoc = {
+      ...doc,
+      version: doc.version + 1,
+      meta: { ...doc.meta, title, updated: nowIso() },
+    }
+    const result = await this.save(renamed, { expectedVersion: doc.version })
+    if (!result.saved) {
+      throw new Error(
+        result.conflict
+          ? `Rename conflict: server is at version ${result.currentVersion ?? 'unknown'}`
+          : 'Rename failed',
+      )
+    }
+  }
+
+  async duplicate(docId: string): Promise<string> {
+    const doc = await this.load(docId)
+    if (!doc) throw new Error('Session not found')
+    return this.create(cloneDocument(doc, `${doc.meta.title} copy`))
+  }
+
+  async importJson(json: string): Promise<string> {
+    const doc = deserialize(json)
+    return this.create(cloneDocument(doc, `${doc.meta.title} import`))
   }
 
   async delete(docId: string): Promise<void> {

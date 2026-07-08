@@ -126,11 +126,13 @@ function CanvasViewComponent({
         if (parent.collapsed) return false
         parentId = parent.parentId
       }
-      // Always render the editing node, even if off-screen
-      if (node.id === editingNodeId) return true
+      // Always render the editing AND selected node, even if off-screen.
+      // Without this, after Escape from editing the selected node can be
+      // culled, leaving no visible selection — arrow navigation appears dead.
+      if (node.id === editingNodeId || node.id === selectedNodeId) return true
       return isNodeVisible(node.position, viewport, containerW, containerH)
     })
-  }, [doc, viewport, containerW, containerH, editingNodeId])
+  }, [doc, viewport, containerW, containerH, editingNodeId, selectedNodeId])
 
   // Global undo/redo: works regardless of canvas focus.
   // The canvas onKeyDown only fires when the canvas div has focus, which
@@ -198,6 +200,38 @@ function CanvasViewComponent({
     containerH,
     editor,
   ])
+
+  // Pan viewport minimally so the selected node is always visible.
+  // Unlike selectToCenter (which centers), this only adjusts when the node
+  // is outside the visible bounds — less disorienting during navigation.
+  useEffect(() => {
+    if (!selectedNodeId) return
+    if (containerW < 50 || containerH < 50) return
+    const node = doc.nodes[selectedNodeId]
+    const position = node?.position
+    if (!position) return
+    const measure = measures[selectedNodeId]
+    const nodeW = (measure?.width ?? 120) * viewport.zoom
+    const nodeH = (measure?.height ?? 40) * viewport.zoom
+    const screenX = position.x * viewport.zoom + viewport.x
+    const screenY = position.y * viewport.zoom + viewport.y
+    const margin = 40
+    let dx = 0
+    let dy = 0
+    if (screenX < margin) dx = margin - screenX
+    else if (screenX + nodeW > containerW - margin)
+      dx = containerW - margin - (screenX + nodeW)
+    if (screenY < margin) dy = margin - screenY
+    else if (screenY + nodeH > containerH - margin)
+      dy = containerH - margin - (screenY + nodeH)
+    if (dx !== 0 || dy !== 0) {
+      editor.setViewport({
+        ...viewport,
+        x: viewport.x + dx,
+        y: viewport.y + dy,
+      })
+    }
+  }, [selectedNodeId, doc, measures, viewport, containerW, containerH, editor])
 
   // Track drag final position for commitPosition on mouseup
   const dragFinalPos = useRef<{ x: number; y: number } | null>(null)

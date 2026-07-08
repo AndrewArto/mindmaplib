@@ -54,19 +54,24 @@ async function runDB(
 }
 
 function extractDocMeta(docJson: string): {
+  id: string | null
   title: string
   version: number
 } {
   try {
     const parsed = JSON.parse(docJson) as {
-      doc?: { meta?: { title?: string }; version?: number }
+      doc?: { id?: string; meta?: { title?: string }; version?: number }
     }
     return {
+      id:
+        typeof parsed.doc?.id === 'string' && parsed.doc.id.length > 0
+          ? parsed.doc.id
+          : null,
       title: parsed.doc?.meta?.title ?? 'Untitled Mindmap',
       version: parsed.doc?.version ?? 0,
     }
   } catch {
-    return { title: 'Untitled Mindmap', version: 0 }
+    return { id: null, title: 'Untitled Mindmap', version: 0 }
   }
 }
 
@@ -88,7 +93,6 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     return json({ id: row.id, doc: row.doc_json })
   }
 
-  // List all
   const { results } = await queryDB(
     env,
     'SELECT id, title, version, updated FROM sessions ORDER BY updated DESC LIMIT 50',
@@ -99,8 +103,8 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
 export const onRequestPost: PagesFunction<Env> = async (context) => {
   const { request, env } = context
   const body = (await request.json()) as { doc: string }
-  const { title, version } = extractDocMeta(body.doc)
-  const id = crypto.randomUUID()
+  const { id: docId, title, version } = extractDocMeta(body.doc)
+  const id = docId ?? crypto.randomUUID()
   const now = new Date().toISOString()
 
   await runDB(
@@ -113,7 +117,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 }
 
 export const onRequestPut: PagesFunction<Env> = async (context) => {
-  const { env, params } = context
+  const { request, env, params } = context
   const id = params.id as string
   const body = (await request.json()) as {
     doc: string
@@ -121,7 +125,6 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
   }
   const { title, version } = extractDocMeta(body.doc)
 
-  // Check existing version for optimistic concurrency
   if (body.expectedVersion !== undefined) {
     const { results } = await queryDB(
       env,
@@ -141,11 +144,16 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
   }
 
   const now = new Date().toISOString()
-  await runDB(
+  const result = await runDB(
     env,
     'UPDATE sessions SET title = ?, doc_json = ?, version = ?, updated = ? WHERE id = ?',
     [title, body.doc, version, now, id],
   )
+
+  const changes = result.meta?.changes
+  if (changes === 0) {
+    return json({ error: 'not found' }, 404)
+  }
 
   return json({ saved: true, conflict: false, currentVersion: version })
 }
