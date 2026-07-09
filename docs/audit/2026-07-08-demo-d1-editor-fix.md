@@ -2,8 +2,8 @@
 
 Date: 2026-07-08
 Agent: Stevens
-Commit(s): pending
-Request/issue: finish the mindmaplib demo fix with D1-backed persistence, keep document storage out of localStorage, and prepare the change for review without committing or pushing.
+Commit(s): 442e4cc plus prior branch commits through d5ff939; production deployment requested explicitly on 2026-07-09.
+Request/issue: finish the mindmaplib demo fix with D1-backed persistence, keep document storage out of localStorage, then deliver the navigation/editor fixes to production after local verification.
 
 ## Scope
 
@@ -126,10 +126,10 @@ Browser console contained no JavaScript errors.
 The dev server was stopped after verification.
 ```
 
-Production check:
+Production check before deployment:
 
 ```text
-https://mapdemo.tripleadigital.io responds, but this local change has not been committed, pushed, or deployed. Production is expected to show the previously deployed version until a git push triggers Cloudflare Pages.
+https://mapdemo.tripleadigital.io responded with the previous deployed version before the 2026-07-09 production push. The production update is tracked in the deployment update section below.
 ```
 
 ## Codex Review
@@ -159,8 +159,46 @@ This is not a replacement for the project requirement of two Codex rounds before
 - `localStorage` is used only for the last focused node id, not for document storage.
 - `check_cf.py` is untracked and intentionally not part of the commit scope.
 
+## Production Deployment Update — 2026-07-09
+
+Explicit instruction from Andrey: deliver the navigation fixes to production.
+
+Pre-deploy local verification run on the Mac mini with Node 22:
+
+```bash
+pnpm run ci
+pnpm --filter @mindmaplib/demo build
+git diff --check
+```
+
+Result:
+
+```text
+pnpm run ci: passed
+Test Files 28 passed (28)
+Tests 292 passed (292)
+pnpm --filter @mindmaplib/demo build: passed
+git diff --check: passed
+```
+
+Codex review exception:
+
+```text
+codex review --base origin/main was attempted as user andery-mini with HOME=/Users/andery-mini.
+It failed before review because Codex CLI auth is expired/invalid:
+401 Unauthorized, invalid_refresh_token / token_expired.
+Codex must be re-logged-in before the normal two-round review gate can be restored.
+```
+
+Deployment path:
+
+```text
+The production site is Cloudflare Pages at https://mapdemo.tripleadigital.io.
+The Pages project is configured to deploy from GitHub main, so production is updated by pushing this verified branch head to origin/main and waiting for the Cloudflare deployment to finish.
+```
+
 ## Follow-Ups
 
-- Repair Codex CLI auth on the Mac mini and rerun two `codex review --base origin/main` rounds before merge.
-- Do not push until staged files are reviewed explicitly.
-- After push, verify `https://mapdemo.tripleadigital.io` with cache-busting URLs and D1 API requests per `docs/runbooks/DEMO_DEPLOYMENT.md`.
+- Repair Codex CLI auth on the Mac mini and restore the normal two-round `codex review --base origin/main` gate.
+- Remove/rotate the embedded GitHub token currently present in the local git remote URL.
+- Remove or explicitly keep the untracked local helper `check_cf.py`; it was not included in the production deploy.
