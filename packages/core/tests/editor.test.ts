@@ -377,7 +377,11 @@ describe('MindmapEditor fitToScreen (C3 fix)', () => {
     const testDoc = {
       ...doc,
       nodes: {
-        [doc.rootId]: { ...rootNode, position: { x: 0, y: 0 } },
+        [doc.rootId]: {
+          ...rootNode,
+          position: { x: 0, y: 0 },
+          childOrder: ['child1'],
+        },
         child1: {
           id: 'child1',
           parentId: doc.rootId,
@@ -400,6 +404,50 @@ describe('MindmapEditor fitToScreen (C3 fix)', () => {
     expect(editor.getState().viewport.zoom).toBeCloseTo(4, 2)
   })
 
+  it('ignores descendants hidden under collapsed nodes when fitting', () => {
+    const doc = createDoc('F')
+    const rootNode = doc.nodes[doc.rootId]!
+    const testDoc = {
+      ...doc,
+      nodes: {
+        [doc.rootId]: {
+          ...rootNode,
+          position: { x: 0, y: 0 },
+          childOrder: ['child1'],
+        },
+        child1: {
+          id: 'child1',
+          parentId: doc.rootId,
+          position: { x: 160, y: 0 },
+          manualPosition: false,
+          collapsed: true,
+          childOrder: ['hiddenGrandchild'],
+          content: {
+            type: 'doc' as const,
+            content: [{ type: 'paragraph' as const }],
+          },
+        },
+        hiddenGrandchild: {
+          id: 'hiddenGrandchild',
+          parentId: 'child1',
+          position: { x: 10000, y: 8000 },
+          manualPosition: false,
+          collapsed: false,
+          childOrder: [],
+          content: {
+            type: 'doc' as const,
+            content: [{ type: 'paragraph' as const }],
+          },
+        },
+      },
+    }
+
+    const editor = new MindmapEditor(testDoc)
+    editor.fitToScreen(600, 400)
+
+    expect(editor.getState().viewport.zoom).toBeGreaterThan(1)
+  })
+
   it('keeps the no-dimension fallback capped at 1', () => {
     const editor = new MindmapEditor(createDoc('F'))
     editor.setLayout('tree-horizontal')
@@ -416,7 +464,11 @@ describe('MindmapEditor fitToScreen (C3 fix)', () => {
     const testDoc = {
       ...doc,
       nodes: {
-        [doc.rootId]: { ...rootNode, position: { x: 0, y: 0 } },
+        [doc.rootId]: {
+          ...rootNode,
+          position: { x: 0, y: 0 },
+          childOrder: ['child1'],
+        },
         child1: {
           id: 'child1',
           parentId: doc.rootId,
@@ -447,7 +499,11 @@ describe('MindmapEditor fitToScreen (C3 fix)', () => {
     const testDoc = {
       ...doc,
       nodes: {
-        [doc.rootId]: { ...rootNode, position: { x: 0, y: 0 } },
+        [doc.rootId]: {
+          ...rootNode,
+          position: { x: 0, y: 0 },
+          childOrder: ['child1'],
+        },
         child1: {
           id: 'child1',
           parentId: doc.rootId,

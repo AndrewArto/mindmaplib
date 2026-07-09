@@ -8,6 +8,7 @@ import type {
   EditorState,
   LayoutMode,
   MindmapDoc,
+  MindmapNode,
   MindmapStore,
   NodeContent,
   SaveResult,
@@ -251,9 +252,17 @@ export class MindmapEditor {
    * 800×600 (deprecated).
    */
   fitToScreen(containerWidth?: number, containerHeight?: number): void {
-    const positioned = Object.values(this.doc.nodes).filter(
-      (n) => n.position !== null,
-    )
+    const positioned: MindmapNode[] = []
+    const visitVisible = (nodeId: string): void => {
+      const node = this.doc.nodes[nodeId]
+      if (!node) return
+      if (node.position !== null) positioned.push(node)
+      if (node.collapsed) return
+      for (const childId of node.childOrder) {
+        visitVisible(childId)
+      }
+    }
+    visitVisible(this.doc.rootId)
     if (positioned.length === 0) {
       this.setViewport({ x: 0, y: 0, zoom: 1 })
       return

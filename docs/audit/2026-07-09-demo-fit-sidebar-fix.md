@@ -43,6 +43,11 @@ Request/issue: ship follow-up fixes for two production demo issues reported by A
    - The first Codex pass after the initial implementation correctly flagged that no-dimension callers would now expand against the fallback 800x600 canvas and could clip smaller embedded canvases.
    - Fix: no-dimension fallback remains capped at zoom 1, while CanvasView supplies real dimensions for toolbar and keyboard fit actions.
 
+5. Production smoke follow-up:
+   - A post-deploy smoke test showed that the selected saved map still fitted too small when outline branches were collapsed.
+   - Root cause: `fitToScreen` included positioned descendants hidden under collapsed nodes, so invisible far-away children inflated the bounding box.
+   - Fix: fit bounds now walk only visible nodes from the root and stop at collapsed branches.
+
 ## TDD Evidence
 
 ### RED
@@ -75,6 +80,7 @@ Additional regression coverage after Codex P2:
 
 ```text
 MindmapEditor fitToScreen > keeps the no-dimension fallback capped at 1
+MindmapEditor fitToScreen > ignores descendants hidden under collapsed nodes when fitting
 useKeyboard additional > Cmd+0 fits to screen using real canvas dimensions when available
 ```
 
@@ -91,7 +97,7 @@ pnpm exec vitest run --project demo demo/tests/App.test.tsx
 Focused result:
 
 ```text
-core: 1 file passed, 41 tests passed
+core: 1 file passed, 42 tests passed
 react: 2 files passed, 41 tests passed
 demo: 1 file passed, 4 tests passed
 ```
@@ -111,7 +117,7 @@ Result:
 ```text
 pnpm run ci: passed
 Test Files 28 passed (28)
-Tests 296 passed (296)
+Tests 297 passed (297)
 pnpm --filter @mindmaplib/demo build: passed
 git diff --check: passed
 ```
