@@ -400,8 +400,9 @@ describe('MindmapEditor fitToScreen (C3 fix)', () => {
     const editor = new MindmapEditor(testDoc)
     editor.fitToScreen(1120, 640)
 
+    const expectedZoom = Math.min((1120 - 48) / 280, (640 - 48) / 40, 4)
     expect(editor.getState().viewport.zoom).toBeGreaterThan(1)
-    expect(editor.getState().viewport.zoom).toBeCloseTo(4, 2)
+    expect(editor.getState().viewport.zoom).toBeCloseTo(expectedZoom, 2)
   })
 
   it('ignores descendants hidden under collapsed nodes when fitting', () => {
@@ -488,8 +489,8 @@ describe('MindmapEditor fitToScreen (C3 fix)', () => {
 
     const editor = new MindmapEditor(testDoc)
     editor.fitToScreen(1200, 800)
-    // zoom = min(1200/1120, 800/840, 1) = min(1.07, 0.95, 1) = 0.952
-    const expectedZoom = Math.min(1200 / 1120, 800 / 840, 1)
+    // zoom = min((1200 - 48)/1120, (800 - 48)/840, 4) = 0.895
+    const expectedZoom = Math.min((1200 - 48) / 1120, (800 - 48) / 840, 4)
     expect(editor.getState().viewport.zoom).toBeCloseTo(expectedZoom, 2)
   })
 

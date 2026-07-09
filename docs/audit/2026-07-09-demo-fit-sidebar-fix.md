@@ -2,7 +2,7 @@
 
 Date: 2026-07-09
 Agent: Stevens
-Request/issue: ship follow-up fixes for two production demo issues reported by Andrey: fit-to-screen leaves small maps tiny on the canvas, and sidebar row actions use ambiguous letter labels (`R`, `D`) instead of clear icons. Also address Codex review P1 about selected-node auto-pan fighting user pan/zoom.
+Request/issue: ship follow-up fixes for production demo issues reported by Andrey: fit-to-screen leaves small maps tiny or cropped on the canvas, sidebar row actions use ambiguous letter labels (`R`, `D`) and overflow the left panel, and demo/outline controls expose premature interactivity. Also address Codex review P1 about selected-node auto-pan fighting user pan/zoom.
 
 ## Scope
 
@@ -11,18 +11,25 @@ Request/issue: ship follow-up fixes for two production demo issues reported by A
   - No-dimension `fitToScreen()` fallback remains capped at zoom 1 to avoid clipping embedded canvases.
   - Demo toolbar and keyboard Cmd/Ctrl+0 pass the actual canvas size into `fitToScreen` where available.
   - Sidebar session actions use SVG icons: pencil for rename, copy for duplicate, and cross for delete.
+  - Sidebar session rows now shrink the title area and keep action icons inside the left panel.
+  - Fit-to-screen uses border-box node measurements, flushes initial browser measurements synchronously, and leaves 24px breathing room when real canvas dimensions are known.
+  - Demo no longer exposes the premature node-editing toolbar buttons (`+C`, `+S`, `Del`) or outline search/collapse-all toolbar; outline interactivity will be handled separately.
   - Selected-node auto-pan no longer reacts to every viewport update, so user pan/zoom is not pulled back.
 - Files changed:
   - `packages/core/src/editor.ts`
   - `packages/core/tests/editor.test.ts`
   - `packages/react/src/CanvasView.tsx`
   - `packages/react/src/hooks/useKeyboard.ts`
+  - `packages/react/src/hooks/useNodeMeasures.ts`
   - `packages/react/tests/CanvasView.test.tsx`
   - `packages/react/tests/useKeyboard-additional.test.tsx`
   - `demo/src/App.tsx`
   - `demo/src/icons.tsx`
   - `demo/src/style.css`
   - `demo/tests/App.test.tsx`
+  - `demo/tests/browser/demo-layout.spec.ts`
+  - `playwright.config.ts`
+  - `package.json`
 - Public API: no breaking signature change. `MindmapEditor.fitToScreen(width?, height?)` remains the same method. Zoom expansion is enabled only when both dimensions are provided.
 
 ## Root Cause
@@ -48,6 +55,13 @@ Request/issue: ship follow-up fixes for two production demo issues reported by A
    - Root cause: `fitToScreen` included positioned descendants hidden under collapsed nodes, so invisible far-away children inflated the bounding box.
    - Fix: fit bounds now walk only visible nodes from the root and stop at collapsed branches.
 
+6. Browser QA follow-up from Andrey:
+   - Real browser testing on production showed `Fit to screen` could still crop the map vertically. The top or bottom node could land exactly on, or outside, the canvas edge.
+   - Root cause: the React measurement pipeline used `ResizeObserverEntry.contentRect`, which excludes CSS padding and borders from `.mml-node`; `fitToScreen` therefore under-counted node boxes. It also did not push initial DOM measurements into the editor until the asynchronous ResizeObserver callback fired.
+   - Fix: measurements now use the rendered border box (`borderBoxSize` / `offsetWidth` / computed fallback), initial node measures are flushed immediately, and fit uses a 24px padding when real canvas dimensions are supplied.
+   - The left saved-map list overflow was caused by a flex item with `min-width: auto`; the title button refused to shrink and pushed the action icon group outside the panel. Fix: session rows/title buttons now have `min-width: 0` and the action group stays inside the row.
+   - The premature `+C`, `+S`, `Del`, outline search, and outline collapse/expand-all controls were removed from the demo UI.
+
 ## TDD Evidence
 
 ### RED
@@ -58,6 +72,7 @@ Commands:
 pnpm exec vitest run --project core packages/core/tests/editor.test.ts
 pnpm exec vitest run --project react packages/react/tests/CanvasView.test.tsx
 pnpm exec vitest run --project demo demo/tests/App.test.tsx
+pnpm test:browser
 ```
 
 Failures observed before production-code changes:
@@ -74,14 +89,27 @@ AssertionError: expected { x: 40, y: 40, zoom: 1 } to deeply equal { x: -1000, y
 demo_exit=1
 App session list actions > uses icons instead of ambiguous letter labels for row actions
 AssertionError: expected 'R' not to be 'R'
+
+browser_exit=1
+Playwright fit-to-screen: Strategy & operating model top expected >= 8, received 0/-74.375
+Playwright saved-map rows: actionsRight expected <= rowRight, received 361.609375 > 283
+Playwright controls: Add child expected count 0, received 1
+
+react_measurement_exit=1
+CanvasView pan/zoom > measures rendered node border boxes so fit-to-screen includes padding and borders
+AssertionError: expected { width: 72, height: 46 } to deeply equal { width: 96, height: 64 }
 ```
 
-Additional regression coverage after Codex P2:
+Additional regression coverage after Codex P2 and browser QA:
 
 ```text
 MindmapEditor fitToScreen > keeps the no-dimension fallback capped at 1
 MindmapEditor fitToScreen > ignores descendants hidden under collapsed nodes when fitting
+CanvasView pan/zoom > measures rendered node border boxes so fit-to-screen includes padding and borders
 useKeyboard additional > Cmd+0 fits to screen using real canvas dimensions when available
+Playwright: fit to screen keeps every rendered node inside the browser canvas with breathing room
+Playwright: saved map rows keep actions inside the left panel while truncating long titles
+Playwright: demo does not expose node-editing or outline-toolbar controls prematurely
 ```
 
 ### GREEN
@@ -98,8 +126,9 @@ Focused result:
 
 ```text
 core: 1 file passed, 42 tests passed
-react: 2 files passed, 41 tests passed
+react: CanvasView 27 tests passed; CanvasView + useKeyboard-additional 42 tests passed
 demo: 1 file passed, 4 tests passed
+browser: 3 Playwright tests passed in Chromium
 ```
 
 ## Full Verification
@@ -108,6 +137,7 @@ Commands:
 
 ```bash
 pnpm run ci
+pnpm test:browser
 pnpm --filter @mindmaplib/demo build
 git diff --check
 ```
@@ -117,7 +147,8 @@ Result:
 ```text
 pnpm run ci: passed
 Test Files 28 passed (28)
-Tests 297 passed (297)
+Tests 298 passed (298)
+pnpm test:browser: passed, 3 Playwright tests passed
 pnpm --filter @mindmaplib/demo build: passed
 git diff --check: passed
 ```
@@ -134,11 +165,9 @@ Vite chunk-size warning for the demo bundle
 
 Codex review round 1 initially completed and produced a P2 finding about no-dimension `fitToScreen()` callers. The finding was fixed and covered by tests.
 
-A subsequent review attempt after the fix is currently blocked by local Codex CLI authentication on the Mac mini:
+Browser-QA follow-up review results:
 
 ```text
-codex login status: Logged in using an API key
-codex review: 401 Unauthorized, invalid_api_key
+round 1: No actionable correctness issues were found in the diff. Format, lint, typecheck, unit tests, and the demo build passed locally.
+round 2: No discrete correctness issues found. Standard local gate passed; Codex sandbox could not bind the local browser-test dev-server port, so the browser test command was validated by Stevens outside the sandbox.
 ```
-
-No API key value was printed or recorded here. Review rounds 1 and 2 after the P2 fix still need to be rerun after Codex is reauthenticated with a valid ChatGPT login or valid API key.

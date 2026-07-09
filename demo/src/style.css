@@ -323,13 +323,15 @@ button {
 }
 
 .session-list li {
+  min-width: 0;
   display: flex;
   align-items: stretch;
   gap: 4px;
 }
 
 .session-button {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 0;
   min-height: 0;
   padding: 8px 10px;
   display: flex;

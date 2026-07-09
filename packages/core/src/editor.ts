@@ -39,6 +39,7 @@ export interface MindmapEditorOptions {
 
 const DEFAULT_UNDO_LIMIT = 100
 const DEFAULT_FIT_MAX_ZOOM = 4
+const DEFAULT_FIT_PADDING = 24
 const DEFAULT_FIT_NODE_SIZE = { width: 120, height: 40 }
 
 /**
@@ -283,13 +284,21 @@ export class MindmapEditor {
     const height = Math.max(maxY - minY, 1)
     const canvasW = Math.max(containerWidth ?? 800, 1)
     const canvasH = Math.max(containerHeight ?? 600, 1)
-    const maxZoom =
-      containerWidth === undefined || containerHeight === undefined
-        ? 1
-        : DEFAULT_FIT_MAX_ZOOM
-    const zoom = Math.min(canvasW / width, canvasH / height, maxZoom)
-    const x = (canvasW - width * zoom) / 2 - minX * zoom
-    const y = (canvasH - height * zoom) / 2 - minY * zoom
+    const hasRealContainer =
+      containerWidth !== undefined && containerHeight !== undefined
+    const maxZoom = hasRealContainer ? DEFAULT_FIT_MAX_ZOOM : 1
+    const padding = hasRealContainer
+      ? Math.min(
+          DEFAULT_FIT_PADDING,
+          Math.max((canvasW - 1) / 2, 0),
+          Math.max((canvasH - 1) / 2, 0),
+        )
+      : 0
+    const availableW = Math.max(canvasW - padding * 2, 1)
+    const availableH = Math.max(canvasH - padding * 2, 1)
+    const zoom = Math.min(availableW / width, availableH / height, maxZoom)
+    const x = padding + (availableW - width * zoom) / 2 - minX * zoom
+    const y = padding + (availableH - height * zoom) / 2 - minY * zoom
     this.setViewport({ x, y, zoom })
   }
 

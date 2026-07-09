@@ -166,23 +166,13 @@ describe('App keyboard navigation focus', () => {
     await waitForExpectation(() => expect(document.activeElement).toBe(canvas))
   })
 
-  it('opens text editing and focuses the new node after Add child', async () => {
+  it('does not render node-editing controls in the top toolbar', async () => {
     const host = await renderApp()
-    const addChild = getButton(host, 'Add child')
 
-    await act(async () => {
-      addChild.click()
-    })
-
-    let editor: HTMLElement | null = null
-    await waitForExpectation(() => {
-      const proseMirror = host.querySelector(
-        '.mml-node--editing .ProseMirror',
-      ) as HTMLElement | null
-      expect(proseMirror).toBeTruthy()
-      editor = proseMirror!
-    })
-
-    await waitForExpectation(() => expect(document.activeElement).toBe(editor))
+    expect(host.querySelector('button[aria-label="Add child"]')).toBeNull()
+    expect(host.querySelector('button[aria-label="Add sibling"]')).toBeNull()
+    expect(
+      host.querySelector('button[aria-label="Delete selected node"]'),
+    ).toBeNull()
   })
 })

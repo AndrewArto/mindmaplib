@@ -62,6 +62,73 @@ describe('CanvasView pan/zoom', () => {
     expect(document.activeElement).not.toBe(canvas)
   })
 
+  it('measures rendered node border boxes so fit-to-screen includes padding and borders', async () => {
+    let resizeCallback: ResizeObserverCallback | null = null
+    const originalResizeObserver = globalThis.ResizeObserver
+    class ResizeObserverMock implements ResizeObserver {
+      observe(): void {}
+      unobserve(): void {}
+      disconnect(): void {}
+      takeRecords(): ResizeObserverEntry[] {
+        return []
+      }
+      constructor(callback: ResizeObserverCallback) {
+        resizeCallback = callback
+      }
+    }
+    globalThis.ResizeObserver = ResizeObserverMock
+
+    try {
+      const doc = createDoc('Test')
+      const editor = new MindmapEditor(doc)
+      editor.setLayout('tree-horizontal')
+      const { container } = render(<Mindmap editor={editor} />)
+      const node = container.querySelector(
+        `[data-node-id="${doc.rootId}"]`,
+      ) as HTMLElement
+      vi.spyOn(node, 'getBoundingClientRect').mockReturnValue({
+        x: 0,
+        y: 0,
+        left: 0,
+        top: 0,
+        right: 96,
+        bottom: 64,
+        width: 96,
+        height: 64,
+        toJSON: () => ({}),
+      })
+
+      resizeCallback?.(
+        [
+          {
+            target: node,
+            contentRect: {
+              x: 0,
+              y: 0,
+              left: 0,
+              top: 0,
+              right: 72,
+              bottom: 46,
+              width: 72,
+              height: 46,
+              toJSON: () => ({}),
+            },
+          } as ResizeObserverEntry,
+        ],
+        {} as ResizeObserver,
+      )
+
+      await new Promise((resolve) => window.setTimeout(resolve, 60))
+
+      expect(editor.getNodeMeasures()[doc.rootId]).toEqual({
+        width: 96,
+        height: 64,
+      })
+    } finally {
+      globalThis.ResizeObserver = originalResizeObserver
+    }
+  })
+
   it('canvas renders SVG edge layer', () => {
     const doc = createDoc('Test')
     const editor = new MindmapEditor(doc)

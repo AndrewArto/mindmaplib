@@ -20,7 +20,8 @@
     "build": "pnpm -r build",
     "check-boundaries": "depcruise packages/core/src --config .dependency-cruiser.cjs",
     "ci": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm check-boundaries",
-    "changeset": "changeset"
+    "changeset": "changeset",
+    "test:browser": "pnpm --filter @mindmaplib/core build && pnpm --filter @mindmaplib/react build && playwright test"
   },
   "keywords": [
     "mindmap",

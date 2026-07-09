@@ -26,11 +26,6 @@ import {
   isEditableTarget,
 } from './KeyboardShortcutsOverlay'
 import { D1Store, exportDocumentJson } from './d1store'
-import {
-  addChildNodeFromToolbar,
-  addSiblingNodeFromToolbar,
-  deleteSelectedNodeFromToolbar,
-} from './editorActions'
 import { consumeGlobalShortcut, isUndoRedoShortcut } from './keyboardGuards'
 import { getResponsiveOutlineWidth } from './responsive'
 
@@ -305,10 +300,6 @@ export function App(): React.ReactElement {
   )
   const editorRef = useRef(editor)
   editorRef.current = editor
-  const editorState = editor.getState()
-  const selectedNode = editorState.selectedNodeId
-    ? editorState.doc.nodes[editorState.selectedNodeId]
-    : null
   const currentDoc = editor.getDoc()
 
   const refreshSessions = useCallback(async () => {
@@ -531,21 +522,6 @@ export function App(): React.ReactElement {
     },
     [editor, fitMapToScreen],
   )
-
-  const addChildNode = useCallback(() => {
-    addChildNodeFromToolbar(editor)
-    focusMindmapAfterToolbarAction()
-  }, [editor, focusMindmapAfterToolbarAction])
-
-  const addSiblingNode = useCallback(() => {
-    addSiblingNodeFromToolbar(editor)
-    focusMindmapAfterToolbarAction()
-  }, [editor, focusMindmapAfterToolbarAction])
-
-  const deleteSelectedNode = useCallback(() => {
-    deleteSelectedNodeFromToolbar(editor)
-    focusMindmapAfterToolbarAction()
-  }, [editor, focusMindmapAfterToolbarAction])
 
   const zoomBy = useCallback(
     (factor: number) => {
@@ -822,41 +798,6 @@ export function App(): React.ReactElement {
             </div>
             <div className="toolbar-buttons">
               <div className="toolbar-group">
-                <button
-                  type="button"
-                  className="icon-button text-icon-button"
-                  title="Add child"
-                  aria-label="Add child"
-                  onClick={addChildNode}
-                >
-                  +C
-                </button>
-                <button
-                  type="button"
-                  className="icon-button text-icon-button"
-                  title="Add sibling"
-                  aria-label="Add sibling"
-                  onClick={addSiblingNode}
-                >
-                  +S
-                </button>
-                <button
-                  type="button"
-                  className="icon-button text-icon-button"
-                  title="Delete selected node"
-                  aria-label="Delete selected node"
-                  disabled={
-                    editorState.editingNodeId !== null ||
-                    !selectedNode ||
-                    selectedNode.parentId === null
-                  }
-                  onClick={deleteSelectedNode}
-                >
-                  Del
-                </button>
-              </div>
-              <span className="toolbar-divider" />
-              <div className="toolbar-group">
                 {layouts.map((mode) => (
                   <button
                     key={mode}
@@ -988,8 +929,6 @@ export function App(): React.ReactElement {
               showOutline={showOutline}
               layoutMode={layout}
               outlineWidth={outlineWidth}
-              outlineShowToolbar
-              outlineSearchable
               gridType="dots"
               className="demo-mindmap"
               onChange={scheduleSave}
