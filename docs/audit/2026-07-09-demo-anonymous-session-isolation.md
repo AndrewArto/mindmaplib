@@ -2,7 +2,7 @@
 
 Date: 2026-07-09
 Agent: Stevens
-Commit(s): 15c09dc before final audit update
+Commit(s): afc9bd0
 Request/issue: public demo users who are not authenticated should only see their own saved maps in the left sidebar.
 
 ## Scope
@@ -89,9 +89,9 @@ Request/issue: public demo users who are not authenticated should only see their
 
 ## CI
 
-- Workflow/run link: pending after push.
-- Result: local verification passed before commit.
-- If blocked, reason and local substitute: not blocked at this stage.
+- Workflow/run link: Cloudflare Pages production deployment `a7915cbe-4715-4414-856a-9a33064d5565`.
+- Result: production deployment for `afc9bd0` succeeded. Local verification passed before commit.
+- If blocked, reason and local substitute: not blocked.
 
 ## Codex Review
 
@@ -103,6 +103,40 @@ Request/issue: public demo users who are not authenticated should only see their
 - Round 1 resolution: no action required.
 - Round 2: 0 BLOCKER, 0 MAJOR, 0 MINOR, 0 NIT. Codex result: no actionable correctness issues found in worker, route config, migration, or tests.
 - Round 2 resolution: no action required.
+
+## Production Deployment
+
+- D1 migration: applied to remote `mindmap-demo` database.
+  - Added nullable `owner_hash` column.
+  - Added `idx_sessions_owner_updated` index.
+- Pages secret: `ANON_ID_SECRET` set as production `secret_text` for `mindmaplib-demo`.
+- Git push:
+  - `origin/fix/demo-navigation-d1-editor`: `216aa54..afc9bd0`.
+  - `origin/main`: `216aa54..afc9bd0`.
+- Cloudflare Pages production deployment:
+  - Deployment ID: `a7915cbe-4715-4414-856a-9a33064d5565`.
+  - Commit: `afc9bd0`.
+  - Result: success.
+- Cache purge:
+  - Zone purge for `tripleadigital.io`: success.
+
+## Production Smoke
+
+- Browser load:
+  - `https://mapdemo.tripleadigital.io/?stevens_smoke=afc9bd0`: 200.
+  - Left sidebar for a fresh browser owner showed no saved maps.
+  - Console JavaScript errors: 0.
+  - Existing TipTap duplicate-link warnings remain unchanged.
+- API owner isolation smoke:
+  - HTML response status: 200.
+  - HTML response bootstrapped `mml_anon_id`: yes.
+  - Owner A initial list: 200, count 0.
+  - Owner A create: 200, returned created id.
+  - Owner A list after create: 200, count 1, created id present.
+  - Owner B list: 200, count 0, separate anonymous cookie present.
+  - Owner B cross-load Owner A session: 404.
+  - Owner A delete: 200.
+  - Owner A list after delete: 200, created id absent.
 
 ## Changeset
 
