@@ -180,7 +180,7 @@ test('fit to screen keeps every rendered node inside the browser canvas with bre
   }
 })
 
-test('saved map rows keep actions inside the left panel while truncating long titles', async ({
+test('saved map rows keep current titles and actions inside the left panel', async ({
   page,
 }) => {
   await page.goto('/')
@@ -218,7 +218,9 @@ test('saved map rows keep actions inside the left panel while truncating long ti
   for (const row of rows) {
     expect(row.actionsRight).toBeLessThanOrEqual(row.rowRight)
     expect(row.gap).toBeGreaterThanOrEqual(0)
-    expect(row.titleClientWidth).toBeLessThanOrEqual(row.titleScrollWidth)
+    expect(row.titleClientWidth + 1).toBeGreaterThanOrEqual(
+      row.titleScrollWidth,
+    )
   }
 })
 
@@ -238,4 +240,29 @@ test('demo does not expose node-editing or outline-toolbar controls prematurely'
     0,
   )
   await expect(page.getByRole('button', { name: 'Expand all' })).toHaveCount(0)
+})
+
+test('stacks workspace before the wider saved-map sidebar can clip toolbar controls', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 900, height: 720 })
+  await page.goto('/')
+  await expect(page.locator('.status-badge')).toHaveText('Saved to D1')
+
+  const layout = await page.evaluate(() => {
+    const sidebar = document.querySelector<HTMLElement>('.sidebar')
+    const mapCard = document.querySelector<HTMLElement>('.map-card')
+    if (!sidebar || !mapCard) throw new Error('layout missing')
+    const sidebarRect = sidebar.getBoundingClientRect()
+    const mapRect = mapCard.getBoundingClientRect()
+    return {
+      sidebarBottom: sidebarRect.bottom,
+      mapTop: mapRect.top,
+      mapLeft: mapRect.left,
+      sidebarLeft: sidebarRect.left,
+    }
+  })
+
+  expect(layout.mapTop).toBeGreaterThanOrEqual(layout.sidebarBottom)
+  expect(layout.mapLeft).toBe(layout.sidebarLeft)
 })

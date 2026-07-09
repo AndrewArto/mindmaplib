@@ -11,7 +11,7 @@ Request/issue: ship follow-up fixes for production demo issues reported by Andre
   - No-dimension `fitToScreen()` fallback remains capped at zoom 1 to avoid clipping embedded canvases.
   - Demo toolbar and keyboard Cmd/Ctrl+0 pass the actual canvas size into `fitToScreen` where available.
   - Sidebar session actions use SVG icons: pencil for rename, copy for duplicate, and cross for delete.
-  - Sidebar session rows now shrink the title area and keep action icons inside the left panel.
+  - Sidebar width and row flex behavior now keep the current saved-map names and action icons inside the left panel.
   - Fit-to-screen uses border-box node measurements, flushes initial browser measurements synchronously, and leaves 24px breathing room when real canvas dimensions are known.
   - Demo no longer exposes the premature node-editing toolbar buttons (`+C`, `+S`, `Del`) or outline search/collapse-all toolbar; outline interactivity will be handled separately.
   - Selected-node auto-pan no longer reacts to every viewport update, so user pan/zoom is not pulled back.
@@ -59,7 +59,7 @@ Request/issue: ship follow-up fixes for production demo issues reported by Andre
    - Real browser testing on production showed `Fit to screen` could still crop the map vertically. The top or bottom node could land exactly on, or outside, the canvas edge.
    - Root cause: the React measurement pipeline used `ResizeObserverEntry.contentRect`, which excludes CSS padding and borders from `.mml-node`; `fitToScreen` therefore under-counted node boxes. It also did not push initial DOM measurements into the editor until the asynchronous ResizeObserver callback fired.
    - Fix: measurements now use the rendered border box (`borderBoxSize` / `offsetWidth` / computed fallback), initial node measures are flushed immediately, and fit uses a 24px padding when real canvas dimensions are supplied.
-   - The left saved-map list overflow was caused by a flex item with `min-width: auto`; the title button refused to shrink and pushed the action icon group outside the panel. Fix: session rows/title buttons now have `min-width: 0` and the action group stays inside the row.
+   - The left saved-map list overflow was caused by a flex item with `min-width: auto`; the title button refused to shrink and pushed the action icon group outside the panel. Fix: the desktop saved-map sidebar is wider, session rows/title buttons have `min-width: 0`, the action group stays inside the row, and the responsive breakpoint moves to 960px so the wider sidebar cannot clip the toolbar on narrow desktop/tablet widths.
    - The premature `+C`, `+S`, `Del`, outline search, and outline collapse/expand-all controls were removed from the demo UI.
 
 ## TDD Evidence
@@ -92,7 +92,8 @@ AssertionError: expected 'R' not to be 'R'
 
 browser_exit=1
 Playwright fit-to-screen: Strategy & operating model top expected >= 8, received 0/-74.375
-Playwright saved-map rows: actionsRight expected <= rowRight, received 361.609375 > 283
+Playwright saved-map rows: actionsRight expected <= rowRight, received 361.609375 > 283; stricter follow-up title fit check expected >= 227, received 149 before widening sidebar
+Playwright responsive follow-up: workspace stack expected mapTop >= sidebarBottom at 900px, received 72 < 704 before raising breakpoint
 Playwright controls: Add child expected count 0, received 1
 
 react_measurement_exit=1
@@ -108,7 +109,8 @@ MindmapEditor fitToScreen > ignores descendants hidden under collapsed nodes whe
 CanvasView pan/zoom > measures rendered node border boxes so fit-to-screen includes padding and borders
 useKeyboard additional > Cmd+0 fits to screen using real canvas dimensions when available
 Playwright: fit to screen keeps every rendered node inside the browser canvas with breathing room
-Playwright: saved map rows keep actions inside the left panel while truncating long titles
+Playwright: saved map rows keep current titles and actions inside the left panel
+Playwright: workspace stacks before the wider saved-map sidebar can clip toolbar controls
 Playwright: demo does not expose node-editing or outline-toolbar controls prematurely
 ```
 
@@ -128,7 +130,7 @@ Focused result:
 core: 1 file passed, 42 tests passed
 react: CanvasView 27 tests passed; CanvasView + useKeyboard-additional 42 tests passed
 demo: 1 file passed, 4 tests passed
-browser: 3 Playwright tests passed in Chromium
+browser: 4 Playwright tests passed in Chromium
 ```
 
 ## Full Verification
@@ -148,7 +150,7 @@ Result:
 pnpm run ci: passed
 Test Files 28 passed (28)
 Tests 298 passed (298)
-pnpm test:browser: passed, 3 Playwright tests passed
+pnpm test:browser: passed, 4 Playwright tests passed
 pnpm --filter @mindmaplib/demo build: passed
 git diff --check: passed
 ```
@@ -169,5 +171,8 @@ Browser-QA follow-up review results:
 
 ```text
 round 1: No actionable correctness issues were found in the diff. Format, lint, typecheck, unit tests, and the demo build passed locally.
-round 2: No discrete correctness issues found. Standard local gate passed; Codex sandbox could not bind the local browser-test dev-server port, so the browser test command was validated by Stevens outside the sandbox.
+round 2: P2 finding — the widened sidebar could clip toolbar controls at 861–900px before the mobile layout breakpoint activated.
+fix: added a 900px browser regression test and raised the stacked-layout breakpoint to 960px.
+final round 1: No discrete correctness, layout, or test issues were found in the changes relative to the base commit.
+final round 2: The changes are limited to demo layout CSS, browser tests, and audit documentation. No discrete correctness issue was found.
 ```
