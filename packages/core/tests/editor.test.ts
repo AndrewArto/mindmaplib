@@ -371,6 +371,44 @@ describe('MindmapEditor drag-position (C2 fix)', () => {
 // --- C3: fitToScreen container dimensions (MML-B-0009) ---
 
 describe('MindmapEditor fitToScreen (C3 fix)', () => {
+  it('expands small maps instead of capping fit zoom at 1', () => {
+    const doc = createDoc('F')
+    const rootNode = doc.nodes[doc.rootId]!
+    const testDoc = {
+      ...doc,
+      nodes: {
+        [doc.rootId]: { ...rootNode, position: { x: 0, y: 0 } },
+        child1: {
+          id: 'child1',
+          parentId: doc.rootId,
+          position: { x: 160, y: 0 },
+          manualPosition: false,
+          collapsed: false,
+          childOrder: [],
+          content: {
+            type: 'doc' as const,
+            content: [{ type: 'paragraph' as const }],
+          },
+        },
+      },
+    }
+
+    const editor = new MindmapEditor(testDoc)
+    editor.fitToScreen(1120, 640)
+
+    expect(editor.getState().viewport.zoom).toBeGreaterThan(1)
+    expect(editor.getState().viewport.zoom).toBeCloseTo(4, 2)
+  })
+
+  it('keeps the no-dimension fallback capped at 1', () => {
+    const editor = new MindmapEditor(createDoc('F'))
+    editor.setLayout('tree-horizontal')
+
+    editor.fitToScreen()
+
+    expect(editor.getState().viewport.zoom).toBe(1)
+  })
+
   it('uses provided container dimensions for zoom calculation', () => {
     const doc = createDoc('F')
     // Manually set two nodes far apart to create a known bounding box

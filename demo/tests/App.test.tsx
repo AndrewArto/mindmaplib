@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
+import { createDoc, serialize } from '@mindmaplib/core'
 import { App } from '../src/App'
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
@@ -84,6 +85,66 @@ describe('App D1 fallback behavior', () => {
     expect(host.textContent).toContain('Failed to create session')
     expect(host.textContent).toContain('Untitled mindmap')
     expect(host.textContent).toContain('Save failed')
+  })
+})
+
+describe('App session list actions', () => {
+  it('uses icons instead of ambiguous letter labels for row actions', async () => {
+    const doc = createDoc('Session action icons')
+    const fetchMock = vi.mocked(fetch)
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.endsWith('/api/sessions')) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: doc.id,
+              title: doc.meta.title,
+              updated: doc.meta.updated,
+              version: doc.version,
+            },
+          ]),
+          { headers: { 'Content-Type': 'application/json' } },
+        )
+      }
+      if (url.endsWith(`/api/sessions/${doc.id}`)) {
+        return new Response(
+          JSON.stringify({ id: doc.id, doc: serialize(doc) }),
+          {
+            headers: { 'Content-Type': 'application/json' },
+          },
+        )
+      }
+      return new Response('{}', {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    })
+
+    const host = await renderApp()
+
+    await waitForExpectation(() => {
+      expect(host.textContent).toContain('Session action icons')
+    })
+
+    const rename = host.querySelector(
+      `button[aria-label="Rename ${doc.meta.title}"]`,
+    ) as HTMLButtonElement | null
+    const duplicate = host.querySelector(
+      `button[aria-label="Duplicate ${doc.meta.title}"]`,
+    ) as HTMLButtonElement | null
+    const remove = host.querySelector(
+      `button[aria-label="Delete ${doc.meta.title}"]`,
+    ) as HTMLButtonElement | null
+
+    expect(rename).toBeTruthy()
+    expect(duplicate).toBeTruthy()
+    expect(remove).toBeTruthy()
+    expect(rename!.textContent?.trim()).not.toBe('R')
+    expect(duplicate!.textContent?.trim()).not.toBe('D')
+    expect(rename!.querySelector('svg')).toBeTruthy()
+    expect(duplicate!.querySelector('svg')).toBeTruthy()
+    expect(remove!.querySelector('svg')).toBeTruthy()
   })
 })
 

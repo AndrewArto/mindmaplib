@@ -73,6 +73,7 @@ export function useKeyboard(
   editor: MindmapEditor,
   exitEditModeRef: React.RefObject<(() => void) | null>,
   confirmDelete?: (node: MindmapNode) => Promise<boolean> | boolean,
+  getFitToScreenSize?: () => { width: number; height: number } | undefined,
 ): KeyboardHandlers {
   const onKeyDown = useCallback(
     (e: KeyboardEvent<HTMLElement>) => {
@@ -117,7 +118,8 @@ export function useKeyboard(
         return
       }
       if (isMod(e) && e.key === '0') {
-        editor.fitToScreen()
+        const size = getFitToScreenSize?.()
+        editor.fitToScreen(size?.width, size?.height)
         e.preventDefault()
         return
       }
@@ -235,7 +237,7 @@ export function useKeyboard(
         }
       }
     },
-    [editor, exitEditModeRef, confirmDelete],
+    [editor, exitEditModeRef, confirmDelete, getFitToScreenSize],
   )
 
   return { onKeyDown }

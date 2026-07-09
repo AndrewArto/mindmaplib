@@ -385,14 +385,7 @@ button {
   border-radius: 5px;
   background: transparent;
   color: var(--muted);
-  font-size: 0;
   box-shadow: none;
-}
-
-.delete-button::before {
-  content: '×';
-  font-size: 18px;
-  line-height: 1;
 }
 
 .delete-button:hover {
@@ -422,10 +415,12 @@ button {
   border-radius: 5px;
   background: transparent;
   color: var(--muted);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
   box-shadow: none;
+}
+
+.session-action-button svg,
+.delete-button svg {
+  display: block;
 }
 
 .session-action-button:hover {

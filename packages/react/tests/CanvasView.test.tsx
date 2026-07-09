@@ -77,6 +77,41 @@ describe('CanvasView pan/zoom', () => {
     expect(container.querySelector('.mml-nodes-layer')).toBeTruthy()
   })
 
+  it('does not auto-pan back when viewport changes without a selection change', async () => {
+    const widthSpy = vi
+      .spyOn(HTMLElement.prototype, 'clientWidth', 'get')
+      .mockReturnValue(800)
+    const heightSpy = vi
+      .spyOn(HTMLElement.prototype, 'clientHeight', 'get')
+      .mockReturnValue(600)
+    try {
+      const doc = createDoc('Test')
+      const editor = new MindmapEditor(doc)
+      editor.setLayout('tree-horizontal')
+      editor.select(doc.rootId)
+      const { container } = render(<Mindmap editor={editor} />)
+      const viewport = container.querySelector(
+        '.mml-canvas-viewport',
+      ) as HTMLElement
+
+      await waitFor(() => {
+        expect(editor.getState().viewport.x).toBeGreaterThanOrEqual(39)
+      })
+
+      fireEvent.mouseDown(viewport, { clientX: 100, clientY: 100 })
+      fireEvent.mouseMove(document, { clientX: -1000, clientY: -1000 })
+      fireEvent.mouseUp(document)
+
+      await new Promise((resolve) => window.setTimeout(resolve, 0))
+
+      expect(editor.getState().viewport.x).toBeLessThan(-500)
+      expect(editor.getState().viewport.y).toBeLessThan(-500)
+    } finally {
+      widthSpy.mockRestore()
+      heightSpy.mockRestore()
+    }
+  })
+
   it('viewport transform CSS includes translate and scale', () => {
     const doc = createDoc('Test')
     const editor = new MindmapEditor(doc)

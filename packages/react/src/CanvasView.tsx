@@ -68,7 +68,21 @@ function CanvasViewComponent({
   docRef.current = state.doc
   const editingNodeIdRef = useRef(state.editingNodeId)
   editingNodeIdRef.current = state.editingNodeId
-  const keyboard = useKeyboard(editor, exitEditModeRef, confirmDelete)
+  const getFitToScreenSize = useCallback(() => {
+    const container = containerRef.current
+    if (!container) return undefined
+    const rect = container.getBoundingClientRect()
+    const width = container.clientWidth || rect.width
+    const height = container.clientHeight || rect.height
+    if (width <= 0 || height <= 0) return undefined
+    return { width, height }
+  }, [])
+  const keyboard = useKeyboard(
+    editor,
+    exitEditModeRef,
+    confirmDelete,
+    getFitToScreenSize,
+  )
   useNodeMeasures(editor, containerRef)
 
   useEffect(() => {
@@ -201,37 +215,48 @@ function CanvasViewComponent({
     editor,
   ])
 
-  // Pan viewport minimally so the selected node is always visible.
-  // Unlike selectToCenter (which centers), this only adjusts when the node
-  // is outside the visible bounds — less disorienting during navigation.
+  // Pan viewport minimally so the selected node is visible after
+  // selection/navigation changes. Deliberately read the current viewport from
+  // a ref and do NOT depend on viewport updates: user pan/zoom must not be
+  // pulled back just because the selected node crosses the margin.
   useEffect(() => {
     if (!selectedNodeId) return
     if (containerW < 50 || containerH < 50) return
     const node = doc.nodes[selectedNodeId]
     const position = node?.position
     if (!position) return
+    const vp = viewportRef.current
     const measure = measures[selectedNodeId]
-    const nodeW = (measure?.width ?? 120) * viewport.zoom
-    const nodeH = (measure?.height ?? 40) * viewport.zoom
-    const screenX = position.x * viewport.zoom + viewport.x
-    const screenY = position.y * viewport.zoom + viewport.y
+    const nodeW = (measure?.width ?? 120) * vp.zoom
+    const nodeH = (measure?.height ?? 40) * vp.zoom
+    const screenX = position.x * vp.zoom + vp.x
+    const screenY = position.y * vp.zoom + vp.y
     const margin = 40
-    let dx = 0
-    let dy = 0
-    if (screenX < margin) dx = margin - screenX
-    else if (screenX + nodeW > containerW - margin)
-      dx = containerW - margin - (screenX + nodeW)
-    if (screenY < margin) dy = margin - screenY
-    else if (screenY + nodeH > containerH - margin)
-      dy = containerH - margin - (screenY + nodeH)
-    if (dx !== 0 || dy !== 0) {
-      editor.setViewport({
-        ...viewport,
-        x: viewport.x + dx,
-        y: viewport.y + dy,
-      })
+    const availableW = Math.max(containerW - margin * 2, 1)
+    const availableH = Math.max(containerH - margin * 2, 1)
+    let nextX = vp.x
+    let nextY = vp.y
+
+    if (nodeW > availableW) {
+      nextX = containerW / 2 - (position.x + nodeW / vp.zoom / 2) * vp.zoom
+    } else if (screenX < margin) {
+      nextX = vp.x + (margin - screenX)
+    } else if (screenX + nodeW > containerW - margin) {
+      nextX = vp.x + (containerW - margin - (screenX + nodeW))
     }
-  }, [selectedNodeId, doc, measures, viewport, containerW, containerH, editor])
+
+    if (nodeH > availableH) {
+      nextY = containerH / 2 - (position.y + nodeH / vp.zoom / 2) * vp.zoom
+    } else if (screenY < margin) {
+      nextY = vp.y + (margin - screenY)
+    } else if (screenY + nodeH > containerH - margin) {
+      nextY = vp.y + (containerH - margin - (screenY + nodeH))
+    }
+
+    if (Math.abs(nextX - vp.x) > 0.5 || Math.abs(nextY - vp.y) > 0.5) {
+      editor.setViewport({ ...vp, x: nextX, y: nextY })
+    }
+  }, [selectedNodeId, doc, measures, containerW, containerH, editor])
 
   // Track drag final position for commitPosition on mouseup
   const dragFinalPos = useRef<{ x: number; y: number } | null>(null)

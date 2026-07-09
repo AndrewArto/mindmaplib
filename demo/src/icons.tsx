@@ -167,6 +167,61 @@ export function IconKeyboard({ size = 18 }: IconProps): React.ReactElement {
   )
 }
 
+export function IconPencil({ size = 18 }: IconProps): React.ReactElement {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M4 20 L8.5 19 L19 8.5 L15.5 5 L5 15.5 Z" />
+      <path d="M13.5 7 L17 10.5" />
+    </svg>
+  )
+}
+
+export function IconCopy({ size = 18 }: IconProps): React.ReactElement {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="8" y="8" width="10" height="10" rx="2" />
+      <path d="M6 16 H5 a2 2 0 0 1 -2 -2 V5 a2 2 0 0 1 2 -2 h9 a2 2 0 0 1 2 2 v1" />
+    </svg>
+  )
+}
+
+export function IconX({ size = 18 }: IconProps): React.ReactElement {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      <path d="M6 6 L18 18 M18 6 L6 18" />
+    </svg>
+  )
+}
+
 const layoutIcons: Record<string, (props: IconProps) => React.ReactElement> = {
   'tree-horizontal': IconTreeHorizontal,
   'tree-vertical': IconTreeVertical,

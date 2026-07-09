@@ -15,6 +15,9 @@ import {
   IconRedo,
   IconPanelToggle,
   IconKeyboard,
+  IconPencil,
+  IconCopy,
+  IconX,
 } from './icons'
 import { createSampleDocuments } from './sample'
 import {
@@ -155,6 +158,18 @@ function queueMindmapFocus(
   } else {
     window.setTimeout(run, 0)
   }
+}
+
+function getCanvasSize(
+  host: HTMLElement | null,
+): { width: number; height: number } | undefined {
+  const canvas = host?.querySelector<HTMLElement>('.mml-canvas')
+  if (!canvas) return undefined
+  const rect = canvas.getBoundingClientRect()
+  const width = canvas.clientWidth || rect.width
+  const height = canvas.clientHeight || rect.height
+  if (width <= 0 || height <= 0) return undefined
+  return { width, height }
 }
 
 function BrandMark(): React.ReactElement {
@@ -502,14 +517,19 @@ export function App(): React.ReactElement {
     queueMindmapFocus(mapHostRef.current, editor)
   }, [editor])
 
+  const fitMapToScreen = useCallback(() => {
+    const size = getCanvasSize(mapHostRef.current)
+    editor.fitToScreen(size?.width, size?.height)
+    focusMindmapAfterToolbarAction()
+  }, [editor, focusMindmapAfterToolbarAction])
+
   const applyLayout = useCallback(
     (mode: LayoutMode) => {
       setLayout(mode)
       editor.setLayout(mode)
-      editor.fitToScreen()
-      focusMindmapAfterToolbarAction()
+      fitMapToScreen()
     },
-    [editor, focusMindmapAfterToolbarAction],
+    [editor, fitMapToScreen],
   )
 
   const addChildNode = useCallback(() => {
@@ -743,7 +763,7 @@ export function App(): React.ReactElement {
                         title="Rename"
                         onClick={() => void renameSession(session)}
                       >
-                        R
+                        <IconPencil size={15} />
                       </button>
                       <button
                         type="button"
@@ -752,7 +772,7 @@ export function App(): React.ReactElement {
                         title="Duplicate"
                         onClick={() => void duplicateSession(session.id)}
                       >
-                        D
+                        <IconCopy size={15} />
                       </button>
                       <button
                         type="button"
@@ -760,7 +780,9 @@ export function App(): React.ReactElement {
                         aria-label={`Delete ${session.title}`}
                         title="Delete"
                         onClick={() => void deleteSession(session.id)}
-                      />
+                      >
+                        <IconX size={15} />
+                      </button>
                     </div>
                   </li>
                 ))}
@@ -872,10 +894,7 @@ export function App(): React.ReactElement {
                 className="icon-button"
                 title="Fit to screen"
                 aria-label="Fit to screen"
-                onClick={() => {
-                  editor.fitToScreen()
-                  focusMindmapAfterToolbarAction()
-                }}
+                onClick={fitMapToScreen}
               >
                 <IconFit size={16} />
               </button>

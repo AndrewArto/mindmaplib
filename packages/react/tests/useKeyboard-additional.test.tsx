@@ -174,15 +174,20 @@ describe('useKeyboard additional', () => {
     expect(editor.getState().viewport.zoom).toBeLessThan(2)
   })
 
-  it('Cmd+0 fits to screen', () => {
+  it('Cmd+0 fits to screen using real canvas dimensions when available', () => {
     const doc = createDoc('Test')
     const editor = new MindmapEditor(doc)
+    editor.setLayout('tree-horizontal')
     editor.select(doc.rootId)
     const exitRef = createRef<(() => void) | null>()
-    const { result } = renderHook(() => useKeyboard(editor, exitRef))
+    const { result } = renderHook(() =>
+      useKeyboard(editor, exitRef, undefined, () => ({
+        width: 600,
+        height: 400,
+      })),
+    )
     act(() => result.current.onKeyDown(makeKbEvent('0', { metaKey: true })))
-    // fitToScreen changes viewport — just verify it doesn't throw
-    expect(editor.getState().viewport).toBeDefined()
+    expect(editor.getState().viewport.zoom).toBeGreaterThan(1)
   })
 
   it('no selection returns early for most keys', () => {

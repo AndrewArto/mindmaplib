@@ -37,6 +37,8 @@ export interface MindmapEditorOptions {
 }
 
 const DEFAULT_UNDO_LIMIT = 100
+const DEFAULT_FIT_MAX_ZOOM = 4
+const DEFAULT_FIT_NODE_SIZE = { width: 120, height: 40 }
 
 /**
  * Stateful mindmap editor: owns the document, UI state, undo/redo history,
@@ -256,24 +258,27 @@ export class MindmapEditor {
       this.setViewport({ x: 0, y: 0, zoom: 1 })
       return
     }
-    const nodeW = 120
-    const nodeH = 40
     let minX = Infinity
     let minY = Infinity
     let maxX = -Infinity
     let maxY = -Infinity
     for (const n of positioned) {
       const p = n.position!
+      const measure = this.nodeMeasures[n.id] ?? DEFAULT_FIT_NODE_SIZE
       minX = Math.min(minX, p.x)
       minY = Math.min(minY, p.y)
-      maxX = Math.max(maxX, p.x + nodeW)
-      maxY = Math.max(maxY, p.y + nodeH)
+      maxX = Math.max(maxX, p.x + measure.width)
+      maxY = Math.max(maxY, p.y + measure.height)
     }
     const width = Math.max(maxX - minX, 1)
     const height = Math.max(maxY - minY, 1)
-    const canvasW = containerWidth ?? 800
-    const canvasH = containerHeight ?? 600
-    const zoom = Math.min(canvasW / width, canvasH / height, 1)
+    const canvasW = Math.max(containerWidth ?? 800, 1)
+    const canvasH = Math.max(containerHeight ?? 600, 1)
+    const maxZoom =
+      containerWidth === undefined || containerHeight === undefined
+        ? 1
+        : DEFAULT_FIT_MAX_ZOOM
+    const zoom = Math.min(canvasW / width, canvasH / height, maxZoom)
     const x = (canvasW - width * zoom) / 2 - minX * zoom
     const y = (canvasH - height * zoom) / 2 - minY * zoom
     this.setViewport({ x, y, zoom })
