@@ -2,13 +2,36 @@
 // This file is compiled to demo/dist/_worker.js by the build script.
 // It handles /api/sessions* routes with a D1 binding (env.MINDMAP_DB).
 
+import {
+  ApiRequestError,
+  assertDocumentWriteRequestAllowed,
+  assertValidSessionId,
+  assertWriteProvenance,
+  MAX_SESSIONS_GLOBAL,
+  MAX_SESSIONS_PER_OWNER,
+  readDocumentRequest,
+} from './apiLimits'
+import {
+  getAnonymousOwner as resolveAnonymousOwner,
+  runLegacyOwnerMigration,
+  type AnonymousOwner,
+} from './functions/anonymousOwner'
+
+interface D1Result {
+  results?: Record<string, unknown>[]
+  meta?: Record<string, unknown>
+}
+
+interface D1PreparedStatement {
+  all(): Promise<D1Result>
+  run(): Promise<D1Result>
+}
+
 interface D1Database {
   prepare(sql: string): {
-    bind(...params: unknown[]): {
-      all(): Promise<{ results: Record<string, unknown>[] }>
-      run(): Promise<{ meta: Record<string, unknown> }>
-    }
+    bind(...params: unknown[]): D1PreparedStatement
   }
+  batch(statements: D1PreparedStatement[]): Promise<D1Result[]>
 }
 
 interface Env {
@@ -26,90 +49,33 @@ interface SessionRow {
   updated: string
 }
 
-type AnonymousOwner = {
-  hash: string
-  setCookie?: string
-}
-
-const ANON_COOKIE_NAME = 'mml_anon_id'
-const ANON_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 365
-const ANON_COOKIE_VALUE_PATTERN = /^[A-Za-z0-9_-]{43,128}$/
-
 function json(body: unknown, status = 200, owner?: AnonymousOwner): Response {
   const headers = new Headers({ 'Content-Type': 'application/json' })
-  if (owner?.setCookie) {
-    headers.append('Set-Cookie', owner.setCookie)
-  }
+  if (owner?.setCookie) headers.append('Set-Cookie', owner.setCookie)
   return new Response(JSON.stringify(body), { status, headers })
-}
-
-function parseCookies(header: string | null): Record<string, string> {
-  const cookies: Record<string, string> = {}
-  if (!header) return cookies
-
-  for (const pair of header.split(';')) {
-    const [rawName, ...rawValue] = pair.trim().split('=')
-    if (!rawName || rawValue.length === 0) continue
-    cookies[rawName] = rawValue.join('=')
-  }
-
-  return cookies
-}
-
-function base64UrlEncode(bytes: Uint8Array): string {
-  let binary = ''
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte)
-  }
-  return btoa(binary)
-    .replaceAll('+', '-')
-    .replaceAll('/', '_')
-    .replace(/=+$/, '')
-}
-
-function makeAnonymousToken(): string {
-  const bytes = new Uint8Array(32)
-  crypto.getRandomValues(bytes)
-  return base64UrlEncode(bytes)
-}
-
-async function hmacSha256(secret: string, value: string): Promise<string> {
-  const encoder = new TextEncoder()
-  const key = await crypto.subtle.importKey(
-    'raw',
-    encoder.encode(secret),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign'],
-  )
-  const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(value))
-  return base64UrlEncode(new Uint8Array(signature))
 }
 
 async function getAnonymousOwner(
   request: Request,
   env: Env,
 ): Promise<AnonymousOwner> {
-  if (!env.ANON_ID_SECRET) {
-    throw new Error('ANON_ID_SECRET is not configured')
-  }
-
-  const cookies = parseCookies(request.headers.get('Cookie'))
-  const existingToken = cookies[ANON_COOKIE_NAME]
-  const token =
-    existingToken && ANON_COOKIE_VALUE_PATTERN.test(existingToken)
-      ? existingToken
-      : makeAnonymousToken()
-  const hash = await hmacSha256(env.ANON_ID_SECRET, token)
-
-  if (token === existingToken) {
-    return { hash }
-  }
-
-  return {
-    hash,
-    setCookie: `${ANON_COOKIE_NAME}=${token}; Path=/; Max-Age=${ANON_COOKIE_MAX_AGE_SECONDS}; HttpOnly; Secure; SameSite=Lax`,
-  }
+  return resolveAnonymousOwner(
+    request,
+    env,
+    async (legacyHash, nextHash, now, expires) =>
+      runLegacyOwnerMigration(
+        (statements) =>
+          env.MINDMAP_DB.batch(
+            statements.map(({ sql, params }) =>
+              env.MINDMAP_DB.prepare(sql).bind(...params),
+            ),
+          ),
+        legacyHash,
+        nextHash,
+        now,
+        expires,
+      ),
+  )
 }
 
 function extractDocMeta(docJson: string): {
@@ -139,9 +105,12 @@ export default {
     const url = new URL(request.url)
     const path = url.pathname
 
+    const isSessionsCollection = path === '/api/sessions'
+    const sessionItemMatch = path.match(/^\/api\/sessions\/([^/]+)$/)
+
     // Bootstrap the anonymous owner on the HTML document response before
     // the browser starts concurrent API calls from the demo shell.
-    if (!path.startsWith('/api/sessions')) {
+    if (!isSessionsCollection && !sessionItemMatch) {
       const assetResponse = await env.ASSETS.fetch(request)
       const acceptsHtml = request.headers.get('Accept')?.includes('text/html')
       const isHtml = assetResponse.headers
@@ -166,11 +135,46 @@ export default {
       })
     }
 
-    const owner = await getAnonymousOwner(request, env)
+    const sessionId = sessionItemMatch?.[1] ?? null
+    const methodIsAllowed = sessionId
+      ? request.method === 'GET' ||
+        request.method === 'PUT' ||
+        request.method === 'DELETE'
+      : request.method === 'GET' || request.method === 'POST'
+    if (!methodIsAllowed) {
+      return json({ error: 'method not allowed' }, 405)
+    }
 
-    // Parse session id from path: /api/sessions/:id
-    const idMatch = path.match(/^\/api\/sessions\/(.+)$/)
-    const sessionId = idMatch ? idMatch[1] : null
+    let documentWriteBody: {
+      doc: string
+      bootstrapKind?: 'first-visit-sample'
+      expectedVersion?: number
+    } | null = null
+    try {
+      if (sessionId) assertValidSessionId(sessionId)
+      if (request.method === 'POST' || request.method === 'PUT') {
+        assertDocumentWriteRequestAllowed(request)
+        documentWriteBody = await readDocumentRequest(request)
+        if (
+          request.method === 'PUT' &&
+          extractDocMeta(documentWriteBody.doc).id !== sessionId
+        ) {
+          throw new ApiRequestError(
+            'Document id must match the session id',
+            400,
+          )
+        }
+      } else if (request.method === 'DELETE') {
+        assertWriteProvenance(request)
+      }
+    } catch (error) {
+      if (error instanceof ApiRequestError) {
+        return json({ error: error.message }, error.status)
+      }
+      throw error
+    }
+
+    const owner = await getAnonymousOwner(request, env)
 
     // GET /api/sessions — list this anonymous owner's sessions
     if (request.method === 'GET' && !sessionId) {
@@ -196,24 +200,117 @@ export default {
 
     // POST /api/sessions — create for this anonymous owner
     if (request.method === 'POST' && !sessionId) {
-      const body = (await request.json()) as { doc: string }
+      const body = documentWriteBody!
       const { id: docId, title, version } = extractDocMeta(body.doc)
       const id = docId ?? crypto.randomUUID()
       const now = new Date().toISOString()
 
-      const stmt = env.MINDMAP_DB.prepare(
-        'INSERT INTO sessions (id, title, doc_json, version, created, updated, owner_hash) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      )
-      await stmt.bind(id, title, body.doc, version, now, now, owner.hash).run()
+      if (body.bootstrapKind === 'first-visit-sample') {
+        const claimId = crypto.randomUUID()
+        const results = await env.MINDMAP_DB.batch([
+          env.MINDMAP_DB.prepare(
+            'INSERT OR IGNORE INTO owner_bootstraps (owner_hash, session_id, claim_id, created) VALUES (?, ?, ?, ?)',
+          ).bind(owner.hash, id, claimId, now),
+          env.MINDMAP_DB.prepare(
+            'INSERT OR IGNORE INTO sessions (id, title, doc_json, version, created, updated, owner_hash) SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM owner_bootstraps WHERE owner_hash = ? AND claim_id = ?) AND (SELECT COUNT(*) FROM sessions WHERE owner_hash = ?) < ? AND (SELECT COUNT(*) FROM sessions) < ?',
+          ).bind(
+            id,
+            title,
+            body.doc,
+            version,
+            now,
+            now,
+            owner.hash,
+            owner.hash,
+            claimId,
+            owner.hash,
+            MAX_SESSIONS_PER_OWNER,
+            MAX_SESSIONS_GLOBAL,
+          ),
+          env.MINDMAP_DB.prepare(
+            'DELETE FROM owner_bootstraps WHERE owner_hash = ? AND claim_id = ? AND NOT EXISTS (SELECT 1 FROM sessions WHERE id = owner_bootstraps.session_id AND owner_hash = owner_bootstraps.owner_hash)',
+          ).bind(owner.hash, claimId),
+          env.MINDMAP_DB.prepare(
+            'SELECT s.id, s.title, s.version, s.updated FROM owner_bootstraps b LEFT JOIN sessions s ON s.id = b.session_id AND s.owner_hash = b.owner_hash WHERE b.owner_hash = ?',
+          ).bind(owner.hash),
+        ])
+        const bootstrapInsert = results[0]
+        const sessionInsert = results[1]
+        const bootstrapRows = results[3]?.results ?? []
+        const bootstrap = bootstrapRows[0] as
+          | {
+              id: string | null
+              title: string | null
+              version: number | null
+              updated: string | null
+            }
+          | undefined
+        const created =
+          (bootstrapInsert?.meta as { changes?: number } | undefined)
+            ?.changes === 1 &&
+          (sessionInsert?.meta as { changes?: number } | undefined)?.changes ===
+            1 &&
+          !!bootstrap?.id
+
+        return json(
+          {
+            id: bootstrap?.id ?? null,
+            title: bootstrap?.title ?? null,
+            version: bootstrap?.version ?? null,
+            updated: bootstrap?.updated ?? null,
+            created,
+          },
+          200,
+          owner,
+        )
+      }
+
+      const claimId = crypto.randomUUID()
+      const results = await env.MINDMAP_DB.batch([
+        env.MINDMAP_DB.prepare(
+          'INSERT OR IGNORE INTO owner_bootstraps (owner_hash, session_id, claim_id, created) VALUES (?, ?, ?, ?)',
+        ).bind(owner.hash, id, claimId, now),
+        env.MINDMAP_DB.prepare(
+          'INSERT OR IGNORE INTO sessions (id, title, doc_json, version, created, updated, owner_hash) SELECT ?, ?, ?, ?, ?, ?, ? WHERE (SELECT COUNT(*) FROM sessions WHERE owner_hash = ?) < ? AND (SELECT COUNT(*) FROM sessions) < ?',
+        ).bind(
+          id,
+          title,
+          body.doc,
+          version,
+          now,
+          now,
+          owner.hash,
+          owner.hash,
+          MAX_SESSIONS_PER_OWNER,
+          MAX_SESSIONS_GLOBAL,
+        ),
+        env.MINDMAP_DB.prepare(
+          'DELETE FROM owner_bootstraps WHERE owner_hash = ? AND claim_id = ? AND NOT EXISTS (SELECT 1 FROM sessions WHERE id = ? AND owner_hash = ?)',
+        ).bind(owner.hash, claimId, id, owner.hash),
+        env.MINDMAP_DB.prepare(
+          "SELECT CASE WHEN owner_hash = ? AND doc_json = ? THEN 'same' ELSE 'conflict' END AS status FROM sessions WHERE id = ? LIMIT 1",
+        ).bind(owner.hash, body.doc, id),
+      ])
+      const inserted = (results[1]?.meta as { changes?: number } | undefined)
+        ?.changes
+      if (inserted !== 1) {
+        const createStatus = (
+          results[3]?.results?.[0] as { status?: unknown } | undefined
+        )?.status
+        if (createStatus === 'same') {
+          return json({ id, title, version }, 200, owner)
+        }
+        if (createStatus === 'conflict') {
+          return json({ error: 'Session id conflict' }, 409, owner)
+        }
+        return json({ error: 'Session limit reached' }, 429, owner)
+      }
       return json({ id, title, version }, 200, owner)
     }
 
     // PUT /api/sessions/:id — update this anonymous owner's session
     if (request.method === 'PUT' && sessionId) {
-      const body = (await request.json()) as {
-        doc: string
-        expectedVersion?: number
-      }
+      const body = documentWriteBody!
       const { title, version } = extractDocMeta(body.doc)
       const now = new Date().toISOString()
 
@@ -284,6 +381,6 @@ export default {
       return json({ deleted: true }, 200, owner)
     }
 
-    return json({ error: 'method not allowed' }, 405, owner)
+    return json({ error: 'method not allowed' }, 405)
   },
 }

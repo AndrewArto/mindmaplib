@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": [
+      "node",
+      "react",
+      "react-dom",
+      "vitest/globals",
+      "@cloudflare/workers-types"
+    ]
+  },
+  "include": ["src", "tests", "functions", "worker.ts", "apiLimits.ts"]
+}

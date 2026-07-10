@@ -23,6 +23,14 @@ function jsonResponse(body: unknown, status = 200): Response {
   })
 }
 
+function requireCallback(
+  value: (() => void) | null,
+  label: string,
+): () => void {
+  if (value === null) throw new Error(`${label} was not assigned`)
+  return value
+}
+
 describe('D1Store', () => {
   beforeEach(() => {
     vi.unstubAllGlobals()
@@ -42,7 +50,38 @@ describe('D1Store', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
-  it('treats a non-JSON dev-server fallback as unavailable D1 instead of throwing', async () => {
+  it('requests an atomic owner-scoped first-visit sample bootstrap', async () => {
+    const doc = createDoc('First visit')
+    mockFetch(async (url, init) => {
+      expect(url).toBe('/api/sessions')
+      expect(init?.method).toBe('POST')
+      const body = JSON.parse(String(init?.body)) as {
+        doc: string
+        bootstrapKind?: string
+      }
+      expect(body.bootstrapKind).toBe('first-visit-sample')
+      expect(deserialize(body.doc).id).toBe(doc.id)
+      return jsonResponse({
+        id: doc.id,
+        title: doc.meta.title,
+        version: doc.version,
+        updated: doc.meta.updated,
+        created: true,
+      })
+    })
+
+    await expect(new D1Store().bootstrapFirstVisitSample(doc)).resolves.toEqual(
+      {
+        id: doc.id,
+        title: doc.meta.title,
+        version: doc.version,
+        updated: doc.meta.updated,
+        created: true,
+      },
+    )
+  })
+
+  it('rejects a non-JSON list response instead of treating it as an authoritative empty owner', async () => {
     mockFetch(
       () =>
         new Response('<!doctype html>', {
@@ -51,7 +90,17 @@ describe('D1Store', () => {
         }),
     )
 
-    await expect(new D1Store().list()).resolves.toEqual([])
+    await expect(new D1Store().list()).rejects.toThrow(
+      'Failed to list sessions: unexpected response 200 text/html',
+    )
+  })
+
+  it('rejects a failed delete response before callers reconcile local state', async () => {
+    mockFetch(() => jsonResponse({ error: 'delete failed' }, 500))
+
+    await expect(new D1Store().delete('doc_delete')).rejects.toThrow(
+      'Failed to delete session: 500',
+    )
   })
 
   it('renames a session by loading the document and saving a bumped title/version', async () => {
@@ -79,7 +128,46 @@ describe('D1Store', () => {
       return jsonResponse({ error: 'unexpected request' }, 500)
     })
 
-    await expect(new D1Store().rename(doc.id, 'After')).resolves.toBeUndefined()
+    await expect(new D1Store().rename(doc.id, 'After')).resolves.toBe(true)
+  })
+
+  it('does not PUT a rename when its lifecycle predicate expires during GET', async () => {
+    const doc = createDoc('Deferred rename')
+    let canContinue = true
+    let resolveLoad: (() => void) | null = null
+    let putCalls = 0
+    mockFetch(async (url, init) => {
+      if (url === `/api/sessions/${doc.id}` && !init) {
+        return new Promise<Response>((resolve) => {
+          resolveLoad = () =>
+            resolve(jsonResponse({ id: doc.id, doc: exportDocumentJson(doc) }))
+        })
+      }
+      if (url === `/api/sessions/${doc.id}` && init?.method === 'PUT') {
+        putCalls += 1
+        return jsonResponse({
+          saved: true,
+          conflict: false,
+          currentVersion: doc.version + 1,
+        })
+      }
+      return jsonResponse({ error: 'unexpected request' }, 500)
+    })
+
+    const store = new D1Store()
+    const rename = (
+      store.rename as unknown as (
+        docId: string,
+        title: string,
+        canContinue: () => boolean,
+      ) => Promise<void>
+    )(doc.id, 'After unmount', () => canContinue)
+    await vi.waitFor(() => expect(resolveLoad).toBeTruthy())
+    canContinue = false
+    requireCallback(resolveLoad, 'resolveLoad')()
+    await rename
+
+    expect(putCalls).toBe(0)
   })
 
   it('returns a normal save failure when a D1 session is missing', async () => {

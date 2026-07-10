@@ -37,6 +37,69 @@ const layouts: LayoutMode[] = ['tree-horizontal', 'tree-vertical', 'radial']
 
 const FOCUS_STORAGE_PREFIX = 'mindmaplib:last-focused-node:'
 
+type EditorStartupSnapshot = {
+  state: ReturnType<MindmapEditor['getState']>
+  lastTransaction: ReturnType<MindmapEditor['getLastTransaction']>
+}
+
+type EditorSourceGuard = {
+  editor: MindmapEditor
+  snapshot: EditorStartupSnapshot
+}
+
+function captureEditorStartupSnapshot(
+  editor: MindmapEditor,
+): EditorStartupSnapshot {
+  return {
+    state: editor.getState(),
+    lastTransaction: editor.getLastTransaction(),
+  }
+}
+
+function editorDocumentIdMatchesStateSnapshot(
+  editor: MindmapEditor,
+  snapshot: EditorStartupSnapshot,
+): boolean {
+  return editor.getState().doc.id === snapshot.state.doc.id
+}
+
+function editorDocumentMatchesStateSnapshot(
+  editor: MindmapEditor,
+  snapshot: EditorStartupSnapshot,
+): boolean {
+  const state = editor.getState()
+  return (
+    state.doc.id === snapshot.state.doc.id &&
+    state.doc.version === snapshot.state.doc.version &&
+    editor.getLastTransaction() === snapshot.lastTransaction
+  )
+}
+
+function editorCanAutoLoadStateSnapshot(
+  editor: MindmapEditor,
+  snapshot: EditorStartupSnapshot,
+): boolean {
+  const state = editor.getState()
+  return (
+    editorDocumentMatchesStateSnapshot(editor, snapshot) &&
+    state.editingNodeId === snapshot.state.editingNodeId
+  )
+}
+
+function captureEditorSourceGuard(editor: MindmapEditor): EditorSourceGuard {
+  return { editor, snapshot: captureEditorStartupSnapshot(editor) }
+}
+
+function editorSourceGuardIsCurrent(
+  currentEditor: MindmapEditor,
+  guard: EditorSourceGuard,
+): boolean {
+  return (
+    currentEditor === guard.editor &&
+    editorCanAutoLoadStateSnapshot(guard.editor, guard.snapshot)
+  )
+}
+
 function getStoredFocusNodeId(doc: MindmapDoc): string | null {
   try {
     const nodeId = window.localStorage.getItem(
@@ -265,6 +328,20 @@ function ThemeToggle({
   )
 }
 
+class AppLifecycleCancelledError extends Error {
+  constructor() {
+    super('App lifecycle ended')
+    this.name = 'AppLifecycleCancelledError'
+  }
+}
+
+class EditorSaveCancelledError extends Error {
+  constructor() {
+    super('Editor save was cancelled')
+    this.name = 'EditorSaveCancelledError'
+  }
+}
+
 const statusText: Record<SaveState, string> = {
   idle: 'Local sample',
   saving: 'Saving…',
@@ -288,7 +365,34 @@ export function App(): React.ReactElement {
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [editorRevision, setEditorRevision] = useState(0)
-  const saveTimer = useRef<number | null>(null)
+  const [initializationPending, setInitializationPending] = useState(true)
+  const [editorInteractionLocked, setEditorInteractionLocked] = useState(false)
+  const editorInteractionLockedRef = useRef(false)
+  const editorInteractionLockOwnerRef = useRef<number | null>(null)
+  const editorInteractionLockGenerationRef = useRef(0)
+  const saveTimers = useRef(new Map<MindmapEditor, number>())
+  const saveQueues = useRef(new Map<MindmapEditor, Promise<void>>())
+  const failedSaveEditors = useRef(new Map<string, MindmapEditor>())
+  const failedSaveTasks = useRef(
+    new Map<string, { editor: MindmapEditor; retry: () => Promise<unknown> }>(),
+  )
+  const saveOperationGenerationsRef = useRef(new Map<MindmapEditor, number>())
+  const saveCancellationGenerationsRef = useRef(
+    new Map<MindmapEditor, number>(),
+  )
+  const loadRequestRef = useRef(0)
+  const sessionListRequestRef = useRef(0)
+  const latestSessionListRequestRef = useRef<Promise<
+    MindmapDocMeta[] | null
+  > | null>(null)
+  const sessionListErrorRef = useRef<string | null>(null)
+  const userIntentGenerationRef = useRef(0)
+  const mountedRef = useRef(true)
+  const lifecycleGenerationRef = useRef(0)
+  const sampleBootstrapCreateRef = useRef<{
+    promise: ReturnType<D1Store['bootstrapFirstVisitSample']>
+    version: number
+  } | null>(null)
   const previousFocus = useRef<HTMLElement | null>(null)
   const shortcutsButtonRef = useRef<HTMLButtonElement>(null)
   const importInputRef = useRef<HTMLInputElement>(null)
@@ -300,30 +404,307 @@ export function App(): React.ReactElement {
   )
   const editorRef = useRef(editor)
   editorRef.current = editor
+  const activeSessionIdRef = useRef(activeSessionId)
+  activeSessionIdRef.current = activeSessionId
   const currentDoc = editor.getDoc()
 
-  const refreshSessions = useCallback(async () => {
-    const rows = await store.list()
-    setSessions(rows)
+  const documentReplacementIsAllowed = useCallback(() => {
+    if (editorRef.current.getState().editingNodeId === null) return true
+    setErrorMessage('Finish editing before using document actions.')
+    return false
+  }, [])
+
+  const nextSaveOperationGeneration = useCallback(
+    (targetEditor: MindmapEditor): number => {
+      const generation =
+        (saveOperationGenerationsRef.current.get(targetEditor) ?? 0) + 1
+      saveOperationGenerationsRef.current.set(targetEditor, generation)
+      return generation
+    },
+    [],
+  )
+
+  const invalidatePendingSave = useCallback(
+    (targetEditor: MindmapEditor = editorRef.current) => {
+      nextSaveOperationGeneration(targetEditor)
+    },
+    [nextSaveOperationGeneration],
+  )
+
+  const cancelPendingEditorSave = useCallback(
+    (targetEditor: MindmapEditor) => {
+      const timerId = saveTimers.current.get(targetEditor)
+      if (timerId !== undefined) {
+        window.clearTimeout(timerId)
+        saveTimers.current.delete(targetEditor)
+      }
+      invalidatePendingSave(targetEditor)
+      const cancellationGeneration =
+        (saveCancellationGenerationsRef.current.get(targetEditor) ?? 0) + 1
+      saveCancellationGenerationsRef.current.set(
+        targetEditor,
+        cancellationGeneration,
+      )
+      const docId = targetEditor.getDoc().id
+      if (failedSaveEditors.current.get(docId) === targetEditor) {
+        failedSaveEditors.current.delete(docId)
+      }
+      if (failedSaveTasks.current.get(docId)?.editor === targetEditor) {
+        failedSaveTasks.current.delete(docId)
+      }
+    },
+    [invalidatePendingSave],
+  )
+
+  const cancelPendingSavesForDocument = useCallback(
+    (docId: string) => {
+      const editors = new Set<MindmapEditor>([
+        ...saveTimers.current.keys(),
+        ...saveQueues.current.keys(),
+        ...failedSaveEditors.current.values(),
+        ...Array.from(
+          failedSaveTasks.current.values(),
+          ({ editor: failedEditor }) => failedEditor,
+        ),
+      ])
+      if (editorRef.current.getDoc().id === docId) {
+        editors.add(editorRef.current)
+      }
+      for (const targetEditor of editors) {
+        if (targetEditor.getDoc().id === docId) {
+          cancelPendingEditorSave(targetEditor)
+        }
+      }
+    },
+    [cancelPendingEditorSave],
+  )
+
+  const lockEditorInteraction = useCallback((): number | null => {
+    if (editorInteractionLockOwnerRef.current !== null) return null
+    const owner = ++editorInteractionLockGenerationRef.current
+    editorInteractionLockOwnerRef.current = owner
+    editorInteractionLockedRef.current = true
+    setEditorInteractionLocked(true)
+    return owner
+  }, [])
+
+  const transferEditorInteractionLock = useCallback((): number => {
+    const owner = ++editorInteractionLockGenerationRef.current
+    editorInteractionLockOwnerRef.current = owner
+    if (!editorInteractionLockedRef.current) {
+      editorInteractionLockedRef.current = true
+      setEditorInteractionLocked(true)
+    }
+    return owner
+  }, [])
+
+  const unlockEditorInteraction = useCallback((owner?: number) => {
+    if (owner !== undefined && editorInteractionLockOwnerRef.current !== owner)
+      return
+    if (editorInteractionLockOwnerRef.current === null) return
+    editorInteractionLockOwnerRef.current = null
+    editorInteractionLockedRef.current = false
+    if (mountedRef.current) setEditorInteractionLocked(false)
+  }, [])
+
+  const enqueueEditorTask = useCallback(
+    <T,>(targetEditor: MindmapEditor, task: () => Promise<T>): Promise<T> => {
+      const previous = saveQueues.current.get(targetEditor) ?? Promise.resolve()
+      const lifecycleGeneration = lifecycleGenerationRef.current
+      const lifecycleIsCurrent = () =>
+        mountedRef.current &&
+        lifecycleGenerationRef.current === lifecycleGeneration
+      const runTask = async () => {
+        if (!lifecycleIsCurrent()) throw new AppLifecycleCancelledError()
+        try {
+          const value = await task()
+          if (!lifecycleIsCurrent()) throw new AppLifecycleCancelledError()
+          return value
+        } catch (error) {
+          if (!lifecycleIsCurrent()) throw new AppLifecycleCancelledError()
+          throw error
+        }
+      }
+      const result = previous.catch(() => undefined).then(runTask)
+      const tail = result.then(
+        () => undefined,
+        () => undefined,
+      )
+      saveQueues.current.set(targetEditor, tail)
+      void tail.finally(() => {
+        if (saveQueues.current.get(targetEditor) === tail) {
+          saveQueues.current.delete(targetEditor)
+        }
+      })
+      return result
+    },
+    [],
+  )
+
+  const enqueueEditorSave = useCallback(
+    async (targetEditor: MindmapEditor) => {
+      const docId = targetEditor.getDoc().id
+      const cancellationGeneration =
+        saveCancellationGenerationsRef.current.get(targetEditor) ?? 0
+      const saveIsNotCancelled = () =>
+        (saveCancellationGenerationsRef.current.get(targetEditor) ?? 0) ===
+        cancellationGeneration
+      const retainedTask = failedSaveTasks.current.get(docId)
+      if (retainedTask?.editor === targetEditor) {
+        if (!saveIsNotCancelled()) throw new EditorSaveCancelledError()
+        const result = await retainedTask.retry()
+        if (!saveIsNotCancelled()) throw new EditorSaveCancelledError()
+        return result
+      }
+      try {
+        const result = await enqueueEditorTask(targetEditor, () => {
+          if (!saveIsNotCancelled()) throw new EditorSaveCancelledError()
+          return targetEditor.save()
+        })
+        if (!saveIsNotCancelled()) throw new EditorSaveCancelledError()
+        if (failedSaveEditors.current.get(docId) === targetEditor) {
+          failedSaveEditors.current.delete(docId)
+        }
+        if (failedSaveTasks.current.get(docId)?.editor === targetEditor) {
+          failedSaveTasks.current.delete(docId)
+        }
+        return result
+      } catch (error) {
+        if (
+          !(error instanceof AppLifecycleCancelledError) &&
+          !(error instanceof EditorSaveCancelledError) &&
+          mountedRef.current &&
+          saveIsNotCancelled()
+        ) {
+          failedSaveEditors.current.set(docId, targetEditor)
+        }
+        throw error
+      }
+    },
+    [enqueueEditorTask],
+  )
+
+  const flushPendingSavesForDocument = useCallback(
+    async (docId: string) => {
+      const editors = new Set<MindmapEditor>([
+        ...saveTimers.current.keys(),
+        ...saveQueues.current.keys(),
+        ...failedSaveEditors.current.values(),
+        ...Array.from(
+          failedSaveTasks.current.values(),
+          ({ editor: failedEditor }) => failedEditor,
+        ),
+      ])
+      const pending: Promise<unknown>[] = []
+      for (const targetEditor of editors) {
+        if (targetEditor.getDoc().id !== docId) continue
+        const timerId = saveTimers.current.get(targetEditor)
+        if (timerId !== undefined) {
+          window.clearTimeout(timerId)
+          saveTimers.current.delete(targetEditor)
+        }
+        const failedTask = failedSaveTasks.current.get(docId)
+        if (failedTask?.editor === targetEditor) {
+          pending.push(failedTask.retry())
+        } else if (targetEditor.isDirty()) {
+          pending.push(enqueueEditorSave(targetEditor))
+        } else {
+          const tail = saveQueues.current.get(targetEditor)
+          if (tail) pending.push(tail)
+        }
+      }
+      await Promise.all(pending)
+    },
+    [enqueueEditorSave],
+  )
+
+  const refreshSessions = useCallback((): Promise<MindmapDocMeta[] | null> => {
+    const requestId = ++sessionListRequestRef.current
+    const requestHolder: {
+      current: Promise<MindmapDocMeta[] | null> | null
+    } = { current: null }
+    const awaitLatestRequest = async (): Promise<MindmapDocMeta[] | null> => {
+      const latest = latestSessionListRequestRef.current
+      if (!latest || latest === requestHolder.current) return null
+      return latest
+    }
+    const request = (async () => {
+      try {
+        const rows = await store.list()
+        if (requestId !== sessionListRequestRef.current) {
+          return awaitLatestRequest()
+        }
+        setSessions(rows)
+        const recoveredListError = sessionListErrorRef.current
+        sessionListErrorRef.current = null
+        if (recoveredListError) {
+          setErrorMessage((current) =>
+            current === recoveredListError ? null : current,
+          )
+        }
+        return rows
+      } catch (error) {
+        if (requestId !== sessionListRequestRef.current) {
+          return awaitLatestRequest()
+        }
+        const message = error instanceof Error ? error.message : String(error)
+        sessionListErrorRef.current = message
+        setErrorMessage(message)
+        return null
+      }
+    })()
+    requestHolder.current = request
+    latestSessionListRequestRef.current = request
+    return request
   }, [store])
 
+  const reconcileSessionsAfterMutation = useCallback(async () => {
+    if (!mountedRef.current) return null
+    return refreshSessions()
+  }, [refreshSessions])
+
   const loadSession = useCallback(
-    async (id: string) => {
+    async (
+      id: string,
+      canApply: () => boolean = () => true,
+      operationSource?: EditorSourceGuard,
+    ) => {
+      if (!documentReplacementIsAllowed()) return false
+      const requestId = ++loadRequestRef.current
       setErrorMessage(null)
+      const sourceEditor = operationSource?.editor ?? editorRef.current
+      const sourceSnapshot =
+        operationSource?.snapshot ?? captureEditorStartupSnapshot(sourceEditor)
+      await flushPendingSavesForDocument(id)
+      if (
+        requestId !== loadRequestRef.current ||
+        !canApply() ||
+        editorRef.current !== sourceEditor ||
+        !editorCanAutoLoadStateSnapshot(sourceEditor, sourceSnapshot)
+      )
+        return false
+      const sourceIsUnchanged = () =>
+        editorRef.current === sourceEditor &&
+        editorCanAutoLoadStateSnapshot(sourceEditor, sourceSnapshot)
       const doc = await store.load(id)
+      if (
+        requestId !== loadRequestRef.current ||
+        !canApply() ||
+        !sourceIsUnchanged()
+      )
+        return false
       if (!doc) {
-        setErrorMessage('Session not found or D1 is not available.')
-        setSessionUrl(null)
-        setActiveSessionId(null)
-        return
+        setErrorMessage('Session not found.')
+        return false
       }
       const next = createEditor(doc, store)
       setEditor(next)
       setActiveSessionId(id)
       setSessionUrl(id)
       setSaveState('saved')
+      return true
     },
-    [store],
+    [documentReplacementIsAllowed, flushPendingSavesForDocument, store],
   )
 
   const openLocalFallback = useCallback(
@@ -339,17 +720,62 @@ export function App(): React.ReactElement {
 
   const persistNewDocument = useCallback(
     async (doc: MindmapDoc) => {
+      if (!documentReplacementIsAllowed()) return
+      const lockOwner = transferEditorInteractionLock()
+      const sourceEditor = editorRef.current
+      const sourceGuard = captureEditorSourceGuard(sourceEditor)
+      const intentGeneration = ++userIntentGenerationRef.current
+      invalidatePendingSave()
+      const intentIsCurrent = () =>
+        userIntentGenerationRef.current === intentGeneration
       setErrorMessage(null)
       try {
         const id = await store.create(doc)
-        await loadSession(id)
-        await refreshSessions()
+        await reconcileSessionsAfterMutation()
+        if (!intentIsCurrent()) return
+        await loadSession(id, intentIsCurrent, sourceGuard)
       } catch (error) {
+        if (!intentIsCurrent()) return
         const message = error instanceof Error ? error.message : String(error)
+        if (!editorSourceGuardIsCurrent(editorRef.current, sourceGuard)) {
+          setErrorMessage(message)
+          setSaveState('error')
+          return
+        }
         openLocalFallback(doc, message)
+      } finally {
+        unlockEditorInteraction(lockOwner)
       }
     },
-    [loadSession, openLocalFallback, refreshSessions, store],
+    [
+      documentReplacementIsAllowed,
+      invalidatePendingSave,
+      loadSession,
+      openLocalFallback,
+      reconcileSessionsAfterMutation,
+      store,
+      transferEditorInteractionLock,
+      unlockEditorInteraction,
+    ],
+  )
+
+  const openSession = useCallback(
+    async (id: string) => {
+      if (!documentReplacementIsAllowed()) return
+      const intentGeneration = ++userIntentGenerationRef.current
+      invalidatePendingSave()
+      const intentIsCurrent = () =>
+        userIntentGenerationRef.current === intentGeneration
+      try {
+        await loadSession(id, intentIsCurrent)
+      } catch (error) {
+        if (!intentIsCurrent()) return
+        const message = error instanceof Error ? error.message : String(error)
+        setErrorMessage(message)
+        setSaveState('error')
+      }
+    },
+    [documentReplacementIsAllowed, invalidatePendingSave, loadSession],
   )
 
   const createSession = useCallback(async () => {
@@ -363,44 +789,291 @@ export function App(): React.ReactElement {
 
   useEffect(() => {
     let cancelled = false
+    const initializationLifecycleGeneration = lifecycleGenerationRef.current
+    const lifecycleIsCurrent = () =>
+      mountedRef.current &&
+      lifecycleGenerationRef.current === initializationLifecycleGeneration
     const initialEditor = editorRef.current
-    const initialState = initialEditor.getState()
+    const initialSnapshot = captureEditorStartupSnapshot(initialEditor)
+    const initialUserIntentGeneration = userIntentGenerationRef.current
+    const startupIntentIsCurrent = () =>
+      userIntentGenerationRef.current === initialUserIntentGeneration
+    let initializationListRequestId: number | null = null
     const initialize = async () => {
       try {
+        const listRequestId = ++sessionListRequestRef.current
+        initializationListRequestId = listRequestId
         const rows = await store.list()
-        if (cancelled) return
+        if (
+          cancelled ||
+          !startupIntentIsCurrent() ||
+          listRequestId !== sessionListRequestRef.current ||
+          !editorDocumentIdMatchesStateSnapshot(
+            editorRef.current,
+            initialSnapshot,
+          )
+        )
+          return
         setSessions(rows)
         const urlSessionId = getSessionIdFromUrl()
         if (urlSessionId) {
-          await loadSession(urlSessionId)
+          await loadSession(
+            urlSessionId,
+            () =>
+              !cancelled &&
+              startupIntentIsCurrent() &&
+              editorCanAutoLoadStateSnapshot(
+                editorRef.current,
+                initialSnapshot,
+              ),
+          )
           return
         }
 
         const firstSessionId = rows[0]?.id
-        if (!firstSessionId) return
-        const currentState = editorRef.current.getState()
-        const untouched =
-          currentState.doc.id === initialState.doc.id &&
-          currentState.doc.version === initialState.doc.version &&
-          currentState.selectedNodeId === initialState.selectedNodeId &&
-          currentState.editingNodeId === initialState.editingNodeId
-        if (untouched) await loadSession(firstSessionId)
+
+        if (firstSessionId) {
+          if (
+            !startupIntentIsCurrent() ||
+            !editorCanAutoLoadStateSnapshot(editorRef.current, initialSnapshot)
+          )
+            return
+          await loadSession(
+            firstSessionId,
+            () =>
+              !cancelled &&
+              startupIntentIsCurrent() &&
+              editorCanAutoLoadStateSnapshot(
+                editorRef.current,
+                initialSnapshot,
+              ),
+          )
+          return
+        }
+
+        try {
+          const createState = editorRef.current.getState()
+          if (
+            !startupIntentIsCurrent() ||
+            createState.doc.id !== initialSnapshot.state.doc.id
+          )
+            return
+          const docToCreate = createState.doc
+          let sampleCreate = sampleBootstrapCreateRef.current
+          if (!sampleCreate) {
+            sampleCreate = {
+              promise: store.bootstrapFirstVisitSample(docToCreate),
+              version: docToCreate.version,
+            }
+            sampleBootstrapCreateRef.current = sampleCreate
+          }
+          const bootstrap = await sampleCreate.promise
+          if (
+            cancelled ||
+            !bootstrap.id ||
+            !startupIntentIsCurrent() ||
+            editorRef.current.getDoc().id !== docToCreate.id
+          )
+            return
+          const sampleId = bootstrap.id
+
+          if (sampleId !== docToCreate.id) {
+            if (
+              !startupIntentIsCurrent() ||
+              !editorCanAutoLoadStateSnapshot(
+                editorRef.current,
+                initialSnapshot,
+              )
+            )
+              return
+            const opened = await loadSession(
+              sampleId,
+              () =>
+                !cancelled &&
+                startupIntentIsCurrent() &&
+                editorCanAutoLoadStateSnapshot(
+                  editorRef.current,
+                  initialSnapshot,
+                ),
+            )
+            if (opened && startupIntentIsCurrent()) await refreshSessions()
+            return
+          }
+
+          let persistedVersion = sampleCreate.version
+          const initialAttachState = initialEditor.getState()
+          if (initialAttachState.doc.id !== docToCreate.id) return
+
+          const persistBootstrapUntilCurrent = async (
+            saveIsNotCancelled: () => boolean,
+          ) => {
+            while (true) {
+              if (!lifecycleIsCurrent()) {
+                throw new AppLifecycleCancelledError()
+              }
+              if (!saveIsNotCancelled()) {
+                throw new EditorSaveCancelledError()
+              }
+              const attachState = initialEditor.getState()
+              if (attachState.doc.id !== docToCreate.id) {
+                throw new Error(
+                  'Bootstrap editor document changed unexpectedly',
+                )
+              }
+              if (attachState.doc.version === persistedVersion) {
+                initialEditor.markSaved(persistedVersion)
+                return {
+                  doc: attachState.doc,
+                  version: persistedVersion,
+                }
+              }
+
+              const docToSave = attachState.doc
+              const result = await store.save(docToSave, {
+                expectedVersion: persistedVersion,
+              })
+              if (!lifecycleIsCurrent()) {
+                throw new AppLifecycleCancelledError()
+              }
+              if (!saveIsNotCancelled()) {
+                throw new EditorSaveCancelledError()
+              }
+              if (!result.saved) {
+                throw new Error(
+                  result.conflict
+                    ? `Bootstrap save conflict: server is at version ${result.currentVersion ?? 'unknown'}`
+                    : 'Bootstrap save failed',
+                )
+              }
+              persistedVersion = result.currentVersion ?? docToSave.version
+            }
+          }
+
+          const enqueueBootstrapCatchUp = () => {
+            const cancellationGeneration =
+              saveCancellationGenerationsRef.current.get(initialEditor) ?? 0
+            const saveIsNotCancelled = () =>
+              (saveCancellationGenerationsRef.current.get(initialEditor) ??
+                0) === cancellationGeneration
+            const pending = enqueueEditorTask(initialEditor, () =>
+              persistBootstrapUntilCurrent(saveIsNotCancelled),
+            )
+            return pending.then(
+              (result) => {
+                if (
+                  failedSaveTasks.current.get(sampleId)?.editor ===
+                  initialEditor
+                ) {
+                  failedSaveTasks.current.delete(sampleId)
+                }
+                if (failedSaveEditors.current.get(sampleId) === initialEditor) {
+                  failedSaveEditors.current.delete(sampleId)
+                }
+                return result
+              },
+              (error: unknown) => {
+                if (
+                  !(error instanceof AppLifecycleCancelledError) &&
+                  !(error instanceof EditorSaveCancelledError) &&
+                  lifecycleIsCurrent() &&
+                  saveIsNotCancelled()
+                ) {
+                  failedSaveTasks.current.set(sampleId, {
+                    editor: initialEditor,
+                    retry: enqueueBootstrapCatchUp,
+                  })
+                }
+                throw error
+              },
+            )
+          }
+
+          const catchUpSave = enqueueBootstrapCatchUp()
+
+          setSessions((current) => [
+            {
+              id: sampleId,
+              title: initialAttachState.doc.meta.title,
+              updated: initialAttachState.doc.meta.updated,
+              version: persistedVersion,
+            },
+            ...current.filter((session) => session.id !== sampleId),
+          ])
+          setActiveSessionId(sampleId)
+          setSessionUrl(sampleId)
+          setSaveState(
+            initialAttachState.doc.version === persistedVersion
+              ? 'saved'
+              : 'saving',
+          )
+
+          try {
+            const caughtUp = await catchUpSave
+            if (cancelled || !startupIntentIsCurrent()) return
+            setSessions((current) => [
+              {
+                id: sampleId,
+                title: caughtUp.doc.meta.title,
+                updated: caughtUp.doc.meta.updated,
+                version: caughtUp.version,
+              },
+              ...current.filter((session) => session.id !== sampleId),
+            ])
+            setSaveState('saved')
+          } catch (error) {
+            if (cancelled || !startupIntentIsCurrent()) return
+            const message =
+              error instanceof Error ? error.message : String(error)
+            setErrorMessage(message)
+            setSaveState(
+              message.toLowerCase().includes('conflict') ? 'conflict' : 'error',
+            )
+          }
+        } catch {
+          // Keep the local sample visible if D1 is unavailable on first load.
+        }
       } catch (error) {
-        if (cancelled) return
+        if (
+          cancelled ||
+          !startupIntentIsCurrent() ||
+          initializationListRequestId !== sessionListRequestRef.current
+        )
+          return
         const message = error instanceof Error ? error.message : String(error)
+        sessionListErrorRef.current = message
         setErrorMessage(message)
         setSaveState('error')
+      } finally {
+        if (!cancelled) setInitializationPending(false)
       }
     }
     void initialize()
     return () => {
       cancelled = true
     }
-  }, [loadSession, store])
+  }, [enqueueEditorTask, loadSession, refreshSessions, store])
 
   useEffect(() => {
+    mountedRef.current = true
     return () => {
-      if (saveTimer.current !== null) window.clearTimeout(saveTimer.current)
+      mountedRef.current = false
+      lifecycleGenerationRef.current += 1
+      userIntentGenerationRef.current += 1
+      loadRequestRef.current += 1
+      sessionListRequestRef.current += 1
+      saveOperationGenerationsRef.current.clear()
+      saveCancellationGenerationsRef.current.clear()
+      latestSessionListRequestRef.current = null
+      editorInteractionLockedRef.current = false
+      editorInteractionLockOwnerRef.current = null
+      for (const timerId of saveTimers.current.values()) {
+        window.clearTimeout(timerId)
+      }
+      saveTimers.current.clear()
+      saveQueues.current.clear()
+      failedSaveEditors.current.clear()
+      failedSaveTasks.current.clear()
+      sessionListErrorRef.current = null
     }
   }, [])
 
@@ -457,6 +1130,10 @@ export function App(): React.ReactElement {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (editorInteractionLockedRef.current && isUndoRedoShortcut(event)) {
+        consumeGlobalShortcut(event)
+        return
+      }
       if (showShortcuts) {
         if (event.key === 'Escape') {
           consumeGlobalShortcut(event)
@@ -485,16 +1162,23 @@ export function App(): React.ReactElement {
 
   const scheduleSave = useCallback(() => {
     if (!activeSessionId) return
-    if (saveTimer.current !== null) window.clearTimeout(saveTimer.current)
+    const existingTimer = saveTimers.current.get(editor)
+    if (existingTimer !== undefined) window.clearTimeout(existingTimer)
+    const saveGeneration = nextSaveOperationGeneration(editor)
+    const saveIsCurrent = () =>
+      saveOperationGenerationsRef.current.get(editor) === saveGeneration &&
+      editorRef.current === editor
     setSaveState('saving')
-    saveTimer.current = window.setTimeout(() => {
-      void editor
-        .save()
+    const timerId = window.setTimeout(() => {
+      saveTimers.current.delete(editor)
+      void enqueueEditorSave(editor)
         .then(async () => {
+          if (!saveIsCurrent()) return
           setSaveState('saved')
           await refreshSessions()
         })
         .catch((error: unknown) => {
+          if (!saveIsCurrent()) return
           const message = error instanceof Error ? error.message : String(error)
           setErrorMessage(message)
           setSaveState(
@@ -502,7 +1186,14 @@ export function App(): React.ReactElement {
           )
         })
     }, 2000)
-  }, [activeSessionId, editor, refreshSessions])
+    saveTimers.current.set(editor, timerId)
+  }, [
+    activeSessionId,
+    editor,
+    enqueueEditorSave,
+    nextSaveOperationGeneration,
+    refreshSessions,
+  ])
 
   const focusMindmapAfterToolbarAction = useCallback(() => {
     queueMindmapFocus(mapHostRef.current, editor)
@@ -556,42 +1247,64 @@ export function App(): React.ReactElement {
 
   const importDocument = useCallback(
     async (file: File) => {
+      if (editor.getState().editingNodeId !== null) {
+        setErrorMessage('Finish editing before importing.')
+        return
+      }
+      const sourceGuard = captureEditorSourceGuard(editorRef.current)
+      const intentGeneration = ++userIntentGenerationRef.current
+      invalidatePendingSave(sourceGuard.editor)
+      const intentIsCurrent = () =>
+        userIntentGenerationRef.current === intentGeneration
       try {
-        if (editor.getState().editingNodeId !== null) {
-          setErrorMessage('Finish editing before importing.')
-          return
-        }
         setErrorMessage(null)
         const text = await file.text()
+        if (!intentIsCurrent()) return
         const id = await store.importJson(text)
-        await loadSession(id)
-        await refreshSessions()
+        await reconcileSessionsAfterMutation()
+        if (!intentIsCurrent()) return
+        await loadSession(id, intentIsCurrent, sourceGuard)
       } catch (error) {
+        if (!intentIsCurrent()) return
         const message = error instanceof Error ? error.message : String(error)
         setErrorMessage(`Import failed: ${message}`)
         setSaveState('error')
       }
     },
-    [editor, loadSession, refreshSessions, store],
+    [
+      editor,
+      invalidatePendingSave,
+      loadSession,
+      reconcileSessionsAfterMutation,
+      store,
+    ],
   )
 
-  const saveActiveBeforeDocumentAction =
-    useCallback(async (): Promise<boolean> => {
+  const saveActiveBeforeDocumentAction = useCallback(
+    async (canApply: () => boolean = () => true): Promise<boolean> => {
       if (editor.getState().editingNodeId !== null) {
         setErrorMessage('Finish editing before using document actions.')
         return false
       }
       if (!activeSessionId) return true
-      if (saveTimer.current !== null) {
-        window.clearTimeout(saveTimer.current)
-        saveTimer.current = null
+      const saveGeneration = nextSaveOperationGeneration(editor)
+      const pendingTimer = saveTimers.current.get(editor)
+      if (pendingTimer !== undefined) {
+        window.clearTimeout(pendingTimer)
+        saveTimers.current.delete(editor)
       }
+      const saveIsCurrent = () =>
+        canApply() &&
+        saveOperationGenerationsRef.current.get(editor) === saveGeneration &&
+        editorRef.current === editor
       try {
-        await editor.save()
+        await enqueueEditorSave(editor)
+        if (!saveIsCurrent()) return false
         setSaveState('saved')
         await refreshSessions()
-        return true
+        return saveIsCurrent()
       } catch (error) {
+        if (!saveIsCurrent()) return false
         const message = error instanceof Error ? error.message : String(error)
         setErrorMessage(message)
         setSaveState(
@@ -599,68 +1312,215 @@ export function App(): React.ReactElement {
         )
         return false
       }
-    }, [activeSessionId, editor, refreshSessions])
+    },
+    [
+      activeSessionId,
+      editor,
+      enqueueEditorSave,
+      nextSaveOperationGeneration,
+      refreshSessions,
+    ],
+  )
 
   const renameSession = useCallback(
     async (session: MindmapDocMeta) => {
       const title = window.prompt('Rename map', session.title)?.trim()
       if (!title) return
-      if (session.id === activeSessionId) {
-        const saved = await saveActiveBeforeDocumentAction()
-        if (!saved) return
+      const sourceGuard = captureEditorSourceGuard(editorRef.current)
+      const sourceIsCurrent = () =>
+        editorSourceGuardIsCurrent(editorRef.current, sourceGuard)
+      const locksEditor = session.id === activeSessionId
+      const lockOwner = locksEditor ? lockEditorInteraction() : null
+      if (locksEditor && lockOwner === null) return
+      const intentGeneration = ++userIntentGenerationRef.current
+      if (locksEditor) invalidatePendingSave(sourceGuard.editor)
+      const intentIsCurrent = () =>
+        userIntentGenerationRef.current === intentGeneration
+      const operationCanContinue = () =>
+        intentIsCurrent() && (!locksEditor || sourceIsCurrent())
+      try {
+        if (session.id === activeSessionId) {
+          const saved = await saveActiveBeforeDocumentAction(
+            () => intentIsCurrent() && sourceIsCurrent(),
+          )
+          if (!saved || !intentIsCurrent()) return
+        } else {
+          await flushPendingSavesForDocument(session.id)
+          if (!intentIsCurrent()) return
+        }
+        const renamed = await store.rename(
+          session.id,
+          title,
+          operationCanContinue,
+        )
+        if (!renamed) return
+        await reconcileSessionsAfterMutation()
+        if (!intentIsCurrent()) return
+        if (session.id === activeSessionId) {
+          await loadSession(session.id, intentIsCurrent, sourceGuard)
+        }
+      } catch (error) {
+        if (!intentIsCurrent()) return
+        const message = error instanceof Error ? error.message : String(error)
+        setErrorMessage(message)
+        setSaveState('error')
+      } finally {
+        if (lockOwner !== null) unlockEditorInteraction(lockOwner)
       }
-      await store.rename(session.id, title)
-      if (session.id === activeSessionId) await loadSession(session.id)
-      await refreshSessions()
     },
     [
       activeSessionId,
+      flushPendingSavesForDocument,
+      invalidatePendingSave,
       loadSession,
-      refreshSessions,
+      lockEditorInteraction,
+      reconcileSessionsAfterMutation,
       saveActiveBeforeDocumentAction,
       store,
+      unlockEditorInteraction,
     ],
   )
 
   const duplicateSession = useCallback(
     async (id: string) => {
-      if (id === activeSessionId) {
-        const saved = await saveActiveBeforeDocumentAction()
-        if (!saved) return
+      if (!documentReplacementIsAllowed()) return
+      const sourceGuard = captureEditorSourceGuard(editorRef.current)
+      const sourceIsCurrent = () =>
+        editorSourceGuardIsCurrent(editorRef.current, sourceGuard)
+      const lockOwner = lockEditorInteraction()
+      if (lockOwner === null) return
+      const intentGeneration = ++userIntentGenerationRef.current
+      invalidatePendingSave(sourceGuard.editor)
+      const intentIsCurrent = () =>
+        userIntentGenerationRef.current === intentGeneration
+      const operationCanContinue = () => intentIsCurrent() && sourceIsCurrent()
+      try {
+        if (id === activeSessionId) {
+          const saved = await saveActiveBeforeDocumentAction(
+            () => intentIsCurrent() && sourceIsCurrent(),
+          )
+          if (!saved || !intentIsCurrent()) return
+        } else {
+          await flushPendingSavesForDocument(id)
+          if (!intentIsCurrent()) return
+        }
+        const copyId = await store.duplicate(id, operationCanContinue)
+        if (!copyId) return
+        await reconcileSessionsAfterMutation()
+        if (!intentIsCurrent()) return
+        await loadSession(copyId, intentIsCurrent, sourceGuard)
+      } catch (error) {
+        if (!intentIsCurrent()) return
+        const message = error instanceof Error ? error.message : String(error)
+        setErrorMessage(message)
+        setSaveState('error')
+      } finally {
+        unlockEditorInteraction(lockOwner)
       }
-      const copyId = await store.duplicate(id)
-      await loadSession(copyId)
-      await refreshSessions()
     },
     [
       activeSessionId,
+      documentReplacementIsAllowed,
+      flushPendingSavesForDocument,
+      invalidatePendingSave,
       loadSession,
-      refreshSessions,
+      lockEditorInteraction,
+      reconcileSessionsAfterMutation,
       saveActiveBeforeDocumentAction,
       store,
+      unlockEditorInteraction,
     ],
   )
 
   const deleteSession = useCallback(
     async (id: string) => {
+      if (!documentReplacementIsAllowed()) return
       const confirmed = window.confirm('Delete this map from D1?')
       if (!confirmed) return
-      await store.delete(id)
-      const rows = await store.list()
-      setSessions(rows)
-      if (id === activeSessionId) {
-        const nextId = rows[0]?.id ?? null
-        if (nextId) {
-          await loadSession(nextId)
-        } else {
+      const sourceEditor = editorRef.current
+      const sourceGuard = captureEditorSourceGuard(sourceEditor)
+      const deletingActiveSession = id === activeSessionId
+      const intentGeneration = ++userIntentGenerationRef.current
+      const intentIsCurrent = () =>
+        userIntentGenerationRef.current === intentGeneration
+      try {
+        await store.delete(id)
+        cancelPendingSavesForDocument(id)
+        const detachedDeletedDocument =
+          mountedRef.current && activeSessionIdRef.current === id
+        if (detachedDeletedDocument) {
+          activeSessionIdRef.current = null
           setActiveSessionId(null)
           setSessionUrl(null)
+        }
+        const authoritativeRows = await reconcileSessionsAfterMutation()
+        cancelPendingSavesForDocument(id)
+        if (!mountedRef.current) return
+        if (!intentIsCurrent()) {
+          if (detachedDeletedDocument) {
+            setSaveState('idle')
+            setErrorMessage(
+              'Map deleted from D1; local changes were kept in the editor.',
+            )
+          }
+          return
+        }
+        const remaining =
+          authoritativeRows ?? sessions.filter((session) => session.id !== id)
+        if (!authoritativeRows) setSessions(remaining)
+        if (deletingActiveSession) {
+          const sourceChanged = !editorSourceGuardIsCurrent(
+            editorRef.current,
+            sourceGuard,
+          )
+          if (sourceChanged) {
+            setSaveState('idle')
+            setErrorMessage(
+              'Map deleted from D1; local changes were kept in the editor.',
+            )
+            return
+          }
+          const nextId = remaining[0]?.id ?? null
+          if (nextId) {
+            try {
+              const opened = await loadSession(
+                nextId,
+                intentIsCurrent,
+                sourceGuard,
+              )
+              if (opened || !intentIsCurrent()) return
+            } catch (error) {
+              if (!intentIsCurrent()) return
+              const message =
+                error instanceof Error ? error.message : String(error)
+              setErrorMessage(message)
+            }
+          }
+          if (!editorSourceGuardIsCurrent(editorRef.current, sourceGuard)) {
+            setSaveState('idle')
+            setErrorMessage(
+              'Map deleted from D1; local changes were kept in the editor.',
+            )
+            return
+          }
           setEditor(createEditor(createBlankDoc(), store))
           setSaveState('idle')
         }
+      } catch (error) {
+        if (!intentIsCurrent()) return
+        const message = error instanceof Error ? error.message : String(error)
+        setErrorMessage(message)
       }
     },
-    [activeSessionId, loadSession, store],
+    [
+      activeSessionId,
+      cancelPendingSavesForDocument,
+      documentReplacementIsAllowed,
+      loadSession,
+      reconcileSessionsAfterMutation,
+      sessions,
+      store,
+    ],
   )
 
   return (
@@ -696,13 +1556,18 @@ export function App(): React.ReactElement {
         </div>
       </header>
 
-      <main className="workspace">
+      <main
+        className="workspace"
+        inert={editorInteractionLocked ? true : undefined}
+        aria-busy={editorInteractionLocked}
+      >
         <aside className="sidebar" aria-label="Saved maps">
           <div className="sidebar-header">
             <h2>Saved maps</h2>
             <button
               type="button"
               className="btn btn-ghost"
+              disabled={initializationPending}
               onClick={() => void refreshSessions()}
             >
               Refresh
@@ -724,7 +1589,7 @@ export function App(): React.ReactElement {
                           ? 'session-button active'
                           : 'session-button'
                       }
-                      onClick={() => void loadSession(session.id)}
+                      onClick={() => void openSession(session.id)}
                     >
                       <span>{session.title}</span>
                       <small>

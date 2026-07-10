@@ -31,6 +31,7 @@ import {
   applyOp,
 } from './transactions.js'
 import { computeLayoutOps } from './layout.js'
+import { normalizeContent } from './content.js'
 
 export interface MindmapEditorOptions {
   store?: MindmapStore
@@ -64,6 +65,7 @@ export class MindmapEditor {
   private readonly store?: MindmapStore
   private lastSavedVersion: number
   private lastTransaction: Transaction | null = null
+  private mergeNextLayoutWithStructuralHistory = false
   private dragSnapshot: MindmapDoc | null = null
 
   private readonly listeners = new Set<(state: EditorState) => void>()
@@ -103,6 +105,9 @@ export class MindmapEditor {
     this.redoStack = []
     this.doc = next
     this.lastTransaction = tx
+    this.mergeNextLayoutWithStructuralHistory = tx.ops.every(
+      (op) => op.type === 'addNode' || op.type === 'moveNode',
+    )
     this.notify()
   }
 
@@ -169,8 +174,18 @@ export class MindmapEditor {
   }
 
   updateContent(nodeId: string, content: NodeContent): void {
+    const node = this.doc.nodes[nodeId]
+    if (!node) {
+      throw new MindmapError(
+        `updateContent: node ${nodeId} not found`,
+        'NODE_NOT_FOUND',
+        nodeId,
+      )
+    }
+    const normalized = normalizeContent(content)
+    if (JSON.stringify(node.content) === JSON.stringify(normalized)) return
     this.apply(
-      buildTransaction(this.doc, createUpdateContentOp(nodeId, content)),
+      buildTransaction(this.doc, createUpdateContentOp(nodeId, normalized)),
     )
   }
 
@@ -194,6 +209,7 @@ export class MindmapEditor {
     // Revert version bump: direct updates don't create new revisions.
     this.doc = { ...next, version: this.doc.version }
     this.lastTransaction = tx
+    this.mergeNextLayoutWithStructuralHistory = false
     this.notify()
   }
 
@@ -211,6 +227,7 @@ export class MindmapEditor {
     this.redoStack = []
     this.doc = next
     this.lastTransaction = tx
+    this.mergeNextLayoutWithStructuralHistory = false
     this.dragSnapshot = null
     this.notify()
   }
@@ -305,12 +322,23 @@ export class MindmapEditor {
   // --- Layout ----------------------------------------------------------
 
   setLayout(mode: LayoutMode): void {
+    const mergeWithPreviousStructuralChange =
+      this.layoutMode === mode && this.mergeNextLayoutWithStructuralHistory
+    this.mergeNextLayoutWithStructuralHistory = false
     this.layoutMode = mode
     const ops = computeLayoutOps(this.doc, mode, {
       nodeMeasures: this.nodeMeasures,
     })
     if (ops.length > 0) {
-      this.apply(buildTransaction(this.doc, ops))
+      const tx = buildTransaction(this.doc, ops)
+      if (mergeWithPreviousStructuralChange) {
+        this.doc = applyTransaction(this.doc, tx)
+        this.redoStack = []
+        this.lastTransaction = tx
+        this.notify()
+      } else {
+        this.apply(tx)
+      }
     } else {
       this.notify()
     }
@@ -354,6 +382,7 @@ export class MindmapEditor {
         next = applyOp(next, op)
       }
       this.doc = next
+      this.mergeNextLayoutWithStructuralHistory = false
       this.notify()
     }
   }
@@ -366,6 +395,7 @@ export class MindmapEditor {
 
   undo(): void {
     if (this.undoStack.length === 0) return
+    this.mergeNextLayoutWithStructuralHistory = false
     this.redoStack.push(this.doc)
     const prev = this.undoStack.pop()!
     this.doc = this.bumpRevision(prev, this.doc.version)
@@ -374,6 +404,7 @@ export class MindmapEditor {
 
   redo(): void {
     if (this.redoStack.length === 0) return
+    this.mergeNextLayoutWithStructuralHistory = false
     this.undoStack.push(this.doc)
     const next = this.redoStack.pop()!
     this.doc = this.bumpRevision(next, this.doc.version)
@@ -392,6 +423,19 @@ export class MindmapEditor {
 
   isDirty(): boolean {
     return this.doc.version !== this.lastSavedVersion
+  }
+
+  /**
+   * Mark the current document revision as clean after the host has persisted it
+   * outside the editor's save() call path.
+   */
+  markSaved(version = this.doc.version): void {
+    if (version !== this.doc.version) {
+      throw new Error(
+        `Cannot mark version ${version} saved while the current document is version ${this.doc.version}`,
+      )
+    }
+    this.lastSavedVersion = version
   }
 
   async save(): Promise<SaveResult | undefined> {
@@ -421,6 +465,9 @@ export class MindmapEditor {
     this.selectedNodeId = null
     this.editingNodeId = null
     this.lastSavedVersion = loaded.version
+    this.lastTransaction = null
+    this.mergeNextLayoutWithStructuralHistory = false
+    this.dragSnapshot = null
     this.notify()
   }
 

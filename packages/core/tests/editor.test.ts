@@ -66,6 +66,58 @@ describe('MindmapEditor mutations', () => {
     expect(getNode(editor.getDoc(), a)).toBeUndefined()
   })
 
+  it('does not create an undo entry for an unchanged node content update', () => {
+    const doc = createDoc('M')
+    const editor = new MindmapEditor(doc)
+    const root = editor.getDoc().nodes[doc.rootId]!
+
+    editor.updateContent(root.id, root.content)
+
+    expect(editor.canUndo()).toBe(false)
+    expect(editor.getDoc().version).toBe(doc.version)
+  })
+
+  it('canonicalizes noncanonical stored content instead of treating it as a no-op', () => {
+    const doc = createDoc('M')
+    const root = doc.rootId
+    const noncanonical = {
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            {
+              type: 'text',
+              text: 'safe text',
+              marks: [{ type: 'script' }],
+            },
+          ],
+        },
+      ],
+    } as unknown as (typeof doc.nodes)[string]['content']
+    const editor = new MindmapEditor({
+      ...doc,
+      nodes: {
+        ...doc.nodes,
+        [root]: { ...doc.nodes[root]!, content: noncanonical },
+      },
+    })
+
+    editor.updateContent(root, noncanonical)
+
+    expect(editor.getDoc().version).toBe(1)
+    expect(editor.getDoc().nodes[root]!.content).toEqual({
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [{ type: 'text', text: 'safe text' }],
+        },
+      ],
+    })
+    expect(editor.canUndo()).toBe(true)
+  })
+
   it('promoteNode moves a node under its grandparent', () => {
     const editor = new MindmapEditor(createDoc('M'))
     const root = editor.getDoc().rootId
@@ -166,6 +218,38 @@ describe('MindmapEditor undo/redo', () => {
     expect(editor.canRedo()).toBe(false)
   })
 
+  it('markSaved rebases dirty state after host-managed persistence', async () => {
+    const expectedVersions: Array<number | undefined> = []
+    const store: InMemoryStore = new InMemoryStore()
+    const originalSave = store.save.bind(store)
+    store.save = async (doc, options) => {
+      expectedVersions.push(options?.expectedVersion)
+      return originalSave(doc, options)
+    }
+    const editor = new MindmapEditor(createDoc('M'), { store })
+    const root = editor.getDoc().rootId
+    editor.addChild(root)
+    expect(editor.isDirty()).toBe(true)
+
+    editor.markSaved()
+    expect(editor.isDirty()).toBe(false)
+
+    editor.addChild(root)
+    await editor.save()
+    expect(expectedVersions.at(-1)).toBe(1)
+  })
+
+  it('markSaved rejects a persisted version that differs from the current document', () => {
+    const editor = new MindmapEditor(createDoc('M'))
+    const root = editor.getDoc().rootId
+    editor.addChild(root)
+
+    expect(() => editor.markSaved(7)).toThrow(
+      'Cannot mark version 7 saved while the current document is version 1',
+    )
+    expect(editor.isDirty()).toBe(true)
+  })
+
   it('undo bumps version above live revision, not snapshot (P1)', () => {
     const store = new InMemoryStore()
     const editor = new MindmapEditor(createDoc('M'), { store })
@@ -190,14 +274,14 @@ describe('MindmapEditor undo/redo', () => {
     const root = editor.getDoc().rootId
     editor.addChild(root) // v1
     editor.addChild(root) // v2
-    const versions = new Set<number>()
+    const observedVersions: number[] = []
     for (let i = 0; i < 6; i++) {
-      versions.add(editor.getDoc().version)
+      observedVersions.push(editor.getDoc().version)
       if (editor.canUndo()) editor.undo()
       else editor.redo()
     }
-    // no duplicate versions
-    expect(versions.size).toBe(versions.size)
+    expect(new Set(observedVersions).size).toBe(observedVersions.length)
+    expect(observedVersions).toEqual([2, 3, 4, 5, 6, 7])
   })
 })
 
@@ -278,6 +362,25 @@ describe('MindmapEditor store integration', () => {
 })
 
 describe('MindmapEditor layout', () => {
+  it('does not merge layout history with a structural change from a previously loaded document', async () => {
+    const store = new InMemoryStore()
+    const first = createDoc('First')
+    const second = createDoc('Second')
+    await store.save(second)
+    const editor = new MindmapEditor(first, { store })
+    editor.setLayout('tree-horizontal')
+    editor.addChild(first.rootId)
+
+    await editor.load(second.id)
+    expect(editor.canUndo()).toBe(false)
+
+    editor.setLayout('tree-horizontal')
+
+    expect(editor.canUndo()).toBe(true)
+    editor.undo()
+    expect(editor.getDoc().nodes[second.rootId]!.position).toBeNull()
+  })
+
   it('setLayout tree-horizontal positions auto nodes', () => {
     const editor = new MindmapEditor(createDoc('M'))
     const root = editor.getDoc().rootId
