@@ -17,6 +17,14 @@ interface SessionRow {
   updated: string
 }
 
+export interface FirstVisitBootstrapResult {
+  id: string | null
+  title: string | null
+  version: number | null
+  updated: string | null
+  created: boolean
+}
+
 function nowIso(): string {
   return new Date().toISOString()
 }
@@ -56,7 +64,12 @@ export class D1Store implements MindmapStore {
 
   async list(): Promise<MindmapDocMeta[]> {
     const resp = await fetch(`${this.baseUrl}/api/sessions`)
-    if (!resp.ok || !isJsonResponse(resp)) return []
+    if (!resp.ok || !isJsonResponse(resp)) {
+      const contentType = resp.headers.get('content-type') ?? 'unknown'
+      throw new Error(
+        `Failed to list sessions: unexpected response ${resp.status} ${contentType}`,
+      )
+    }
     const rows = (await resp.json()) as SessionRow[]
     return rows.map((r) => ({
       id: r.id,
@@ -68,7 +81,13 @@ export class D1Store implements MindmapStore {
 
   async load(docId: string): Promise<MindmapDoc | null> {
     const resp = await fetch(`${this.baseUrl}/api/sessions/${docId}`)
-    if (!resp.ok || !isJsonResponse(resp)) return null
+    if (resp.status === 404) return null
+    if (!resp.ok || !isJsonResponse(resp)) {
+      const contentType = resp.headers.get('content-type') ?? 'unknown'
+      throw new Error(
+        `Failed to load session: unexpected response ${resp.status} ${contentType}`,
+      )
+    }
     const data = (await resp.json()) as { id?: string; doc: string }
     const doc = deserialize(data.doc)
     if (data.id && data.id !== doc.id) {
@@ -115,6 +134,23 @@ export class D1Store implements MindmapStore {
     return result
   }
 
+  async bootstrapFirstVisitSample(
+    doc: MindmapDoc,
+  ): Promise<FirstVisitBootstrapResult> {
+    const resp = await fetch(`${this.baseUrl}/api/sessions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        doc: serialize(doc),
+        bootstrapKind: 'first-visit-sample',
+      }),
+    })
+    if (!resp.ok || !isJsonResponse(resp)) {
+      throw new Error(`Failed to bootstrap first-visit sample: ${resp.status}`)
+    }
+    return (await resp.json()) as FirstVisitBootstrapResult
+  }
+
   async create(doc: MindmapDoc): Promise<string> {
     const docJson = serialize(doc)
     const resp = await fetch(`${this.baseUrl}/api/sessions`, {
@@ -129,8 +165,13 @@ export class D1Store implements MindmapStore {
     return result.id
   }
 
-  async rename(docId: string, title: string): Promise<void> {
+  async rename(
+    docId: string,
+    title: string,
+    canContinue: () => boolean = () => true,
+  ): Promise<boolean> {
     const doc = await this.load(docId)
+    if (!canContinue()) return false
     if (!doc) throw new Error('Session not found')
     const renamed: MindmapDoc = {
       ...doc,
@@ -145,10 +186,15 @@ export class D1Store implements MindmapStore {
           : 'Rename failed',
       )
     }
+    return true
   }
 
-  async duplicate(docId: string): Promise<string> {
+  async duplicate(
+    docId: string,
+    canContinue: () => boolean = () => true,
+  ): Promise<string | null> {
     const doc = await this.load(docId)
+    if (!canContinue()) return null
     if (!doc) throw new Error('Session not found')
     return this.create(cloneDocument(doc, `${doc.meta.title} copy`))
   }
@@ -159,8 +205,9 @@ export class D1Store implements MindmapStore {
   }
 
   async delete(docId: string): Promise<void> {
-    await fetch(`${this.baseUrl}/api/sessions/${docId}`, {
+    const resp = await fetch(`${this.baseUrl}/api/sessions/${docId}`, {
       method: 'DELETE',
     })
+    if (!resp.ok) throw new Error(`Failed to delete session: ${resp.status}`)
   }
 }

@@ -54,6 +54,9 @@ importers:
         specifier: ^19.0.0
         version: 19.2.7(react@19.2.7)
     devDependencies:
+      '@cloudflare/workers-types':
+        specifier: ^5.20260710.1
+        version: 5.20260710.1
       '@types/react':
         specifier: ^19.0.0
         version: 19.2.17
@@ -223,6 +226,9 @@ packages:
 
   '@changesets/write@0.4.0':
     resolution: {integrity: sha512-CdTLvIOPiCNuH71pyDu3rA+Q0n65cmAbXnwWH84rKGiFumFzkmHNT8KHTMEchcxN+Kl8I54xGUhJ7l3E7X396Q==}
+
+  '@cloudflare/workers-types@5.20260710.1':
+    resolution: {integrity: sha512-4ooaY2Pb5XGwDn8Fzm6jnTAJkIX0R5LBvL9euQpp2T58sQItlAQd9yivAlkwGhpY5cM1u81/9HaXwKAjXwtyzA==}
 
   '@csstools/color-helpers@5.1.0':
     resolution: {integrity: sha512-S11EXWJyy0Mz5SYvRmY8nJYTFFd1LCNV+7cXyAgQtOOuzb4EsgfqDufL+9esx72/eLhsRdGZwaldu/h+E4t4BA==}
@@ -2866,6 +2872,8 @@ snapshots:
       fs-extra: 7.0.1
       human-id: 4.2.0
       prettier: 2.8.8
+
+  '@cloudflare/workers-types@5.20260710.1': {}
 
   '@csstools/color-helpers@5.1.0': {}
 

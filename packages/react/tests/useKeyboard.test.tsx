@@ -109,6 +109,38 @@ describe('useKeyboard', () => {
     expect(editor.getDoc().nodes[newId].position).not.toBeNull()
   })
 
+  it('undo removes a newly inserted auto-layout child in one step', () => {
+    const doc = createDoc('Test')
+    const editor = new MindmapEditor(doc)
+    editor.setLayout('tree-horizontal')
+    editor.select(doc.rootId)
+    const exitRef = createRef<(() => void) | null>()
+    const { result } = renderHook(() => useKeyboard(editor, exitRef))
+
+    act(() => {
+      result.current.onKeyDown(makeKbEvent('Tab'))
+    })
+    const insertedId = editor.getState().selectedNodeId!
+    expect(editor.getDoc().nodes[insertedId]?.position).not.toBeNull()
+
+    act(() => {
+      editor.updateContent(
+        insertedId,
+        editor.getDoc().nodes[insertedId]!.content,
+      )
+      editor.stopEditing()
+      editor.undo()
+    })
+
+    expect(editor.getDoc().nodes[insertedId]).toBeUndefined()
+    expect(editor.getState().selectedNodeId).toBeNull()
+
+    act(() => {
+      editor.redo()
+    })
+    expect(editor.getDoc().nodes[insertedId]?.position).not.toBeNull()
+  })
+
   it('deletes non-root subtrees and focuses the parent', async () => {
     const doc = createDoc('Test')
     const editor = new MindmapEditor(doc)

@@ -27,7 +27,7 @@ const ALLOWED_URL_SCHEMES = ['http:', 'https:', 'mailto:']
 
 /** A freshly created node has this content. */
 export function emptyContent(): NodeContent {
-  return { type: 'doc', content: [{ type: 'paragraph', content: [] }] }
+  return { type: 'doc', content: [{ type: 'paragraph' }] }
 }
 
 function isTextBlock(block: NodeContentBlock): block is TextBlock {
@@ -230,7 +230,7 @@ export function normalizeContent(input: unknown): NodeContent {
   }
 
   if (blocks.length === 0) {
-    blocks.push({ type: 'paragraph', content: [] })
+    blocks.push({ type: 'paragraph' })
   }
   return { type: 'doc', content: blocks }
 }

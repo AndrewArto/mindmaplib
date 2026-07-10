@@ -10,7 +10,7 @@ describe('emptyContent', () => {
   it('produces a doc with one empty paragraph', () => {
     expect(emptyContent()).toEqual({
       type: 'doc',
-      content: [{ type: 'paragraph', content: [] }],
+      content: [{ type: 'paragraph' }],
     })
   })
 })
