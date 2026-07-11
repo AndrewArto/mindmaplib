@@ -18,6 +18,7 @@ export type {
   Transaction,
   LayoutMode,
   EditorState,
+  PositionUpdate,
   NodeMeasure,
   NodeMeasures,
   LayoutOptions,

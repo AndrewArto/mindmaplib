@@ -112,9 +112,52 @@ export const navigationDoc = makeNavigationDoc(
   100,
 )
 
+export const MARQUEE_DOC_ID = 'doc-marquee'
+export const MARQUEE_FIRST_ID = 'marquee-first'
+export const MARQUEE_SECOND_ID = 'marquee-second'
+export const MARQUEE_CONTROL_ID = 'marquee-control'
+
+export const marqueeDoc: BrowserDemoDoc = {
+  id: MARQUEE_DOC_ID,
+  rootId: 'marquee-root',
+  nodes: {
+    'marquee-root': {
+      ...node('marquee-root', null, 'Marquee root', [
+        MARQUEE_FIRST_ID,
+        MARQUEE_SECOND_ID,
+        MARQUEE_CONTROL_ID,
+      ]),
+      position: { x: 40, y: 350 },
+      manualPosition: true,
+    },
+    [MARQUEE_FIRST_ID]: {
+      ...node(MARQUEE_FIRST_ID, 'marquee-root', 'Marquee alpha'),
+      position: { x: 100, y: 100 },
+      manualPosition: true,
+    },
+    [MARQUEE_SECOND_ID]: {
+      ...node(MARQUEE_SECOND_ID, 'marquee-root', 'Marquee beta'),
+      position: { x: 300, y: 120 },
+      manualPosition: true,
+    },
+    [MARQUEE_CONTROL_ID]: {
+      ...node(MARQUEE_CONTROL_ID, 'marquee-root', 'Outside control'),
+      position: { x: 360, y: 350 },
+      manualPosition: true,
+    },
+  },
+  version: 1,
+  meta: {
+    title: 'Marquee interaction map',
+    created: updated,
+    updated,
+  },
+}
+
 export const browserDocs = [
   makeDoc('doc-copy', 'TripleA Digital enablement map copy', 15),
   navigationDoc,
+  marqueeDoc,
 ]
 
 const DEMO_ORIGIN = 'http://127.0.0.1:4173'

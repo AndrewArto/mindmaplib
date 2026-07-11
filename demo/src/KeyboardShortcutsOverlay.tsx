@@ -65,6 +65,8 @@ function shortcutGroups(modifier: PlatformModifier): ShortcutGroup[] {
       title: 'View and layout',
       items: [
         { keys: ['Mouse drag'], label: 'Pan canvas' },
+        { keys: ['Shift+Mouse drag'], label: 'Select nodes with a marquee' },
+        { keys: ['Drag selected node'], label: 'Move selected nodes together' },
         { keys: ['Mouse wheel'], label: 'Zoom canvas' },
         { keys: [`${modifier}++`, `${modifier}+-`], label: 'Zoom in or out' },
         { keys: [`${modifier}+0`], label: 'Fit map to screen' },

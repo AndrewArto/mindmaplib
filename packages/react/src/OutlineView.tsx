@@ -552,7 +552,7 @@ function OutlineViewComponent({
           key={id}
           node={node}
           depth={depth}
-          isSelected={id === selectedId}
+          isSelected={state.selectedNodeIds.includes(id)}
           isEditing={id === state.editingNodeId}
           isFocused={id === focusedItemId}
           isDraggable={!isRoot}
@@ -602,6 +602,7 @@ function OutlineViewComponent({
     doc,
     selectedId,
     state.editingNodeId,
+    state.selectedNodeIds,
     focusedItemId,
     dropTargetId,
     dropZone,
@@ -655,6 +656,7 @@ function OutlineViewComponent({
         className="mml-outline-tree"
         role="tree"
         aria-label="Mindmap outline"
+        aria-multiselectable="true"
         tabIndex={focusedItemId ? -1 : 0}
         onKeyDown={handleKeyDown}
         onFocus={(event) => {

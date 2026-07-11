@@ -31,6 +31,13 @@ const json = serialize(editor.getDoc())
 // Layout
 editor.setLayout('tree-horizontal')
 
+// Multi-select and move nodes in one undoable transaction
+editor.setSelection([root, childId])
+editor.commitPositions([
+  { nodeId: root, position: { x: 100, y: 80 } },
+  { nodeId: childId, position: { x: 300, y: 80 } },
+])
+
 // Explicit toolbar reflow: discard positions previously set by node dragging
 editor.setLayout('tree-vertical', { resetManualPositions: true })
 
