@@ -74,9 +74,32 @@ function makeDoc(id: string, title: string, version: number): DemoDoc {
   }
 }
 
+function makeLayoutDoc(id: string, title: string, version: number): DemoDoc {
+  const doc = makeDoc(id, title, version)
+  const branchIds = ['strategy', 'workflow', 'custom', 'risk']
+  for (const [branchIndex, branchId] of branchIds.entries()) {
+    const childIds = Array.from(
+      { length: 3 },
+      (_, childIndex) => `${branchId}-${childIndex + 1}`,
+    )
+    doc.nodes[branchId]!.childOrder = childIds
+    for (const [childIndex, childId] of childIds.entries()) {
+      doc.nodes[childId] = node(
+        childId,
+        branchId,
+        branchIndex === branchIds.length - 1 &&
+          childIndex === childIds.length - 1
+          ? 'Focused third-party governance responsibility'
+          : `${branchId} capability ${childIndex + 1}`,
+      )
+    }
+  }
+  return doc
+}
+
 const docs = [
   makeDoc('doc-copy', 'TripleA Digital enablement map copy', 15),
-  makeDoc('doc-main', 'TripleA Digital enablement map', 100),
+  makeLayoutDoc('doc-main', 'TripleA Digital enablement map', 100),
 ]
 
 async function mockD1(page: Page): Promise<void> {
@@ -265,4 +288,60 @@ test('stacks workspace before the wider saved-map sidebar can clip toolbar contr
 
   expect(layout.mapTop).toBeGreaterThanOrEqual(layout.sidebarBottom)
   expect(layout.mapLeft).toBe(layout.sidebarLeft)
+})
+
+test('layout switching keeps the whole map fitted when a distant node is focused', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem(
+      'mindmaplib:last-focused-node:doc-main',
+      'risk-3',
+    )
+  })
+  await page.goto('/?id=doc-main')
+  await expect(page.getByText('Saved to D1')).toBeVisible()
+  await expect(page.locator('.mml-node--selected')).toContainText(
+    'Focused third-party governance responsibility',
+  )
+
+  await page.getByRole('button', { name: 'Vertical tree' }).click()
+
+  await expect(async () => {
+    const metrics = await page.evaluate(() => {
+      const canvas = document.querySelector<HTMLElement>('.mml-canvas')
+      if (!canvas) throw new Error('canvas missing')
+      const canvasRect = canvas.getBoundingClientRect()
+      const nodes = [...canvas.querySelectorAll<HTMLElement>('.mml-node')]
+      return {
+        canvas: { width: canvasRect.width, height: canvasRect.height },
+        rects: nodes.map((node) => {
+          const rect = node.getBoundingClientRect()
+          return {
+            text: node.textContent?.trim() ?? '',
+            left: rect.left - canvasRect.left,
+            top: rect.top - canvasRect.top,
+            right: rect.right - canvasRect.left,
+            bottom: rect.bottom - canvasRect.top,
+          }
+        }),
+      }
+    })
+
+    expect(metrics.rects).toHaveLength(Object.keys(docs[1]!.nodes).length)
+    for (const rect of metrics.rects) {
+      expect(rect.left, `${rect.text} left`).toBeGreaterThanOrEqual(8)
+      expect(rect.top, `${rect.text} top`).toBeGreaterThanOrEqual(8)
+      expect(rect.right, `${rect.text} right`).toBeLessThanOrEqual(
+        metrics.canvas.width - 8,
+      )
+      expect(rect.bottom, `${rect.text} bottom`).toBeLessThanOrEqual(
+        metrics.canvas.height - 8,
+      )
+    }
+  }).toPass()
+
+  await expect(page.locator('.mml-node--selected')).toContainText(
+    'Focused third-party governance responsibility',
+  )
 })
