@@ -38,6 +38,11 @@ export interface MindmapEditorOptions {
   undoLimit?: number
 }
 
+export interface SetLayoutOptions {
+  /** Reset user-dragged anchors before applying an explicit auto-layout. */
+  resetManualPositions?: boolean
+}
+
 const DEFAULT_UNDO_LIMIT = 100
 const DEFAULT_FIT_MAX_ZOOM = 4
 const DEFAULT_FIT_PADDING = 24
@@ -321,14 +326,38 @@ export class MindmapEditor {
 
   // --- Layout ----------------------------------------------------------
 
-  setLayout(mode: LayoutMode): void {
+  setLayout(mode: LayoutMode, options?: SetLayoutOptions): void {
+    const resetManualPositions =
+      mode !== 'free-float' && (options?.resetManualPositions ?? false)
     const mergeWithPreviousStructuralChange =
-      this.layoutMode === mode && this.mergeNextLayoutWithStructuralHistory
+      !resetManualPositions &&
+      this.layoutMode === mode &&
+      this.mergeNextLayoutWithStructuralHistory
     this.mergeNextLayoutWithStructuralHistory = false
     this.layoutMode = mode
-    const ops = computeLayoutOps(this.doc, mode, {
+
+    const resetOps: Transaction['ops'] = []
+    if (resetManualPositions) {
+      const visitVisible = (nodeId: string): void => {
+        const node = this.doc.nodes[nodeId]
+        if (!node) return
+        if (node.manualPosition) {
+          resetOps.push(createResetManualPositionOp(node.id))
+        }
+        if (node.collapsed) return
+        for (const childId of node.childOrder) visitVisible(childId)
+      }
+      visitVisible(this.doc.rootId)
+    }
+    let docForLayout = this.doc
+    for (const op of resetOps) {
+      docForLayout = applyOp(docForLayout, op)
+    }
+    const layoutOps = computeLayoutOps(docForLayout, mode, {
       nodeMeasures: this.nodeMeasures,
     })
+    const ops = [...resetOps, ...layoutOps]
+
     if (ops.length > 0) {
       const tx = buildTransaction(this.doc, ops)
       if (mergeWithPreviousStructuralChange) {

@@ -154,6 +154,56 @@ describe('MindmapEditor mutations', () => {
     expect(modes.every((m) => m === 'tree-vertical')).toBe(true)
   })
 
+  it('setLayout resets every manual position atomically when requested', () => {
+    const { editor, root, a } = editorWithTree()
+    editor.setPosition(root, { x: 400, y: 300 })
+    editor.setPosition(a, { x: 900, y: 700 })
+    const beforeLayout = editor.getDoc()
+
+    editor.setLayout('tree-vertical', { resetManualPositions: true })
+
+    expect(editor.getDoc().version).toBe(beforeLayout.version + 1)
+    expect(Object.values(editor.getDoc().nodes)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: root, manualPosition: false }),
+        expect.objectContaining({ id: a, manualPosition: false }),
+      ]),
+    )
+    expect(editor.getDoc().nodes[root]!.position).not.toEqual({
+      x: 400,
+      y: 300,
+    })
+    expect(editor.getDoc().nodes[a]!.position).not.toEqual({ x: 900, y: 700 })
+
+    editor.undo()
+    expect(editor.getDoc().nodes[root]).toMatchObject({
+      manualPosition: true,
+      position: { x: 400, y: 300 },
+    })
+    expect(editor.getDoc().nodes[a]).toMatchObject({
+      manualPosition: true,
+      position: { x: 900, y: 700 },
+    })
+
+    editor.redo()
+    expect(editor.getDoc().nodes[root]!.manualPosition).toBe(false)
+    expect(editor.getDoc().nodes[a]!.manualPosition).toBe(false)
+  })
+
+  it('setLayout does not clear manual positions hidden by a collapsed ancestor', () => {
+    const { editor, a } = editorWithTree()
+    const hiddenChild = editor.addChild(a)
+    editor.setPosition(hiddenChild, { x: 700, y: 500 })
+    editor.toggleCollapsed(a)
+
+    editor.setLayout('tree-vertical', { resetManualPositions: true })
+
+    expect(editor.getDoc().nodes[hiddenChild]).toMatchObject({
+      manualPosition: true,
+      position: { x: 700, y: 500 },
+    })
+  })
+
   it('promoteNode of a root child is a no-op', () => {
     const editor = new MindmapEditor(createDoc('M'))
     const root = editor.getDoc().rootId

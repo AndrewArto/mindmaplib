@@ -582,7 +582,8 @@ class MindmapEditor {
   fitToScreen(): void  // computes viewport to fit all nodes
 
   // Layout
-  setLayout(mode: LayoutMode): void  // runs computeLayoutOps, wraps ops in transaction, applies
+  setLayout(mode: LayoutMode, options?: { resetManualPositions?: boolean }): void
+  // resetManualPositions atomically clears dragged anchors before explicit auto-layout
 
   // Undo/redo
   undo(): void
