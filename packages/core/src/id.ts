@@ -22,7 +22,8 @@ function fallbackId(): string {
  * Prefers crypto.randomUUID(); falls back to a counter-based scheme.
  */
 export function createId(prefix = 'id'): string {
-  const g = globalThis as { crypto?: { randomUUID?: () => string } }
-  const uuid = g.crypto?.randomUUID?.()
+  const uuid = (
+    globalThis as { crypto?: { randomUUID?: () => string } }
+  ).crypto?.randomUUID?.()
   return uuid ? `${prefix}_${uuid}` : `${prefix}_${fallbackId()}`
 }
