@@ -166,7 +166,9 @@ function OutlineViewComponent({
     'before' | 'after' | 'inside' | null
   >(null)
 
-  const itemRefs = useRef<Map<string, HTMLDivElement>>(new Map())
+  const treeRef = useRef<HTMLDivElement>(null)
+  const focusedItemIdRef = useRef(focusedItemId)
+  focusedItemIdRef.current = focusedItemId
   const searchActive = searchQuery.length > 0
 
   // Auto-expand ancestors when selection changes
@@ -190,18 +192,65 @@ function OutlineViewComponent({
     return new Set(buildFilteredList(doc, searchQuery))
   }, [doc, searchQuery, searchActive])
 
-  // Scroll focused item into view
+  // Move real DOM focus with the roving tabindex and keep the focused item
+  // visible. Visual focus alone is insufficient for keyboard and screen-reader
+  // users because subsequent key events must originate from the active item.
   useEffect(() => {
-    if (focusedItemId) {
-      const el = itemRefs.current.get(focusedItemId)
-      if (el) el.scrollIntoView({ block: 'nearest' })
+    if (!focusedItemId) return
+    const tree = treeRef.current
+    const active = document.activeElement
+    if (
+      active &&
+      active !== document.body &&
+      active !== tree &&
+      !tree?.contains(active)
+    ) {
+      return
     }
-  }, [focusedItemId])
+    if (
+      active instanceof HTMLElement &&
+      active.closest(
+        'button, input, textarea, select, a, [contenteditable="true"]',
+      )
+    ) {
+      return
+    }
+    const items = tree?.querySelectorAll<HTMLElement>('[data-outline-node-id]')
+    const el = Array.from(items ?? []).find(
+      (item) => item.dataset.outlineNodeId === focusedItemId,
+    )
+    if (!el) return
+    el.focus({ preventScroll: true })
+    el.scrollIntoView?.({ block: 'nearest' })
+  }, [focusedItemId, visibleIds])
+
+  useEffect(() => {
+    if (!focusedItemId || visibleIds.includes(focusedItemId)) return
+    const fallback =
+      selectedId && visibleIds.includes(selectedId)
+        ? selectedId
+        : (visibleIds[0] ?? null)
+    setFocusedItemId(fallback)
+  }, [focusedItemId, selectedId, visibleIds])
+
+  const focusCanvas = useCallback(() => {
+    treeRef.current
+      ?.closest('.mml-container')
+      ?.querySelector<HTMLElement>('.mml-canvas')
+      ?.focus()
+  }, [])
 
   // --- Keyboard navigation ---
 
   const handleKeyDown = useCallback(
     (e: ReactKeyboardEvent<HTMLDivElement>) => {
+      const target = e.target as HTMLElement
+      if (
+        target.isContentEditable ||
+        target.closest('button, input, textarea, select, a, [contenteditable]')
+      ) {
+        return
+      }
       const currentId = focusedItemId ?? visibleIds[0] ?? null
       if (!currentId) return
 
@@ -268,6 +317,7 @@ function OutlineViewComponent({
         }
         case 'Enter': {
           editor.select(node.id)
+          focusCanvas()
           e.preventDefault()
           break
         }
@@ -280,6 +330,11 @@ function OutlineViewComponent({
         case 'Backspace': {
           if (node.parentId !== null) {
             const doDelete = () => {
+              const currentNode = editor.getDoc().nodes[node.id]
+              if (!currentNode || currentNode.parentId === null) return
+              if (focusedItemIdRef.current === node.id) {
+                setFocusedItemId(currentNode.parentId)
+              }
               editor.deleteNode(node.id)
             }
             if (node.childOrder.length > 0) {
@@ -289,9 +344,15 @@ function OutlineViewComponent({
                     typeof window !== 'undefined' &&
                       window.confirm(`Delete "${node.id}" and its subtree?`),
                   )
-              confirmPromise.then((confirmed) => {
-                if (confirmed) doDelete()
-              })
+              void confirmPromise.then(
+                (confirmed) => {
+                  if (confirmed) doDelete()
+                },
+                () => {
+                  // A failed confirmation is treated as cancellation. Keep the
+                  // current document and roving focus unchanged.
+                },
+              )
             } else {
               doDelete()
             }
@@ -320,6 +381,7 @@ function OutlineViewComponent({
       searchActive,
       ephemeralExpand,
       confirmDelete,
+      focusCanvas,
     ],
   )
 
@@ -527,7 +589,7 @@ function OutlineViewComponent({
             }
             editor.startEditing(nodeId)
           }}
-          onFocusItem={() => {}}
+          onFocusItem={(nodeId) => setFocusedItemId(nodeId || null)}
           onDragStart={handleDragStart}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
@@ -589,12 +651,14 @@ function OutlineViewComponent({
         </div>
       )}
       <div
+        ref={treeRef}
         className="mml-outline-tree"
         role="tree"
         aria-label="Mindmap outline"
         tabIndex={focusedItemId ? -1 : 0}
         onKeyDown={handleKeyDown}
-        onFocus={() => {
+        onFocus={(event) => {
+          if (event.target !== event.currentTarget) return
           if (!focusedItemId && visibleIds.length > 0) {
             setFocusedItemId(selectedId ?? visibleIds[0])
           }

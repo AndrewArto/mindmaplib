@@ -1,158 +1,52 @@
 import { expect, test, type Page } from '@playwright/test'
+import {
+  navigationDoc,
+  mockD1,
+  NAVIGATION_DOC_ID,
+  NAVIGATION_FOCUSED_NODE_ID,
+  NAVIGATION_FOCUSED_NODE_TEXT,
+} from './browser-fixtures'
 
-type NodeContent = {
-  type: 'doc'
-  content: Array<{
-    type: 'paragraph'
-    content: Array<{ type: 'text'; text: string }>
-  }>
-}
+async function expectRenderedNodesInsideCanvas(
+  page: Page,
+  expectedCount?: number,
+): Promise<void> {
+  await expect(async () => {
+    const metrics = await page.evaluate(() => {
+      const canvas = document.querySelector<HTMLElement>('.mml-canvas')
+      if (!canvas) throw new Error('canvas missing')
+      const canvasRect = canvas.getBoundingClientRect()
+      const nodes = [...canvas.querySelectorAll<HTMLElement>('.mml-node')]
+      if (nodes.length === 0) throw new Error('nodes missing')
+      return {
+        canvas: { width: canvasRect.width, height: canvasRect.height },
+        rects: nodes.map((node) => {
+          const rect = node.getBoundingClientRect()
+          return {
+            text: node.textContent?.trim() ?? '',
+            left: rect.left - canvasRect.left,
+            top: rect.top - canvasRect.top,
+            right: rect.right - canvasRect.left,
+            bottom: rect.bottom - canvasRect.top,
+          }
+        }),
+      }
+    })
 
-type DemoDoc = {
-  id: string
-  rootId: string
-  nodes: Record<
-    string,
-    {
-      id: string
-      parentId: string | null
-      position: { x: number; y: number } | null
-      manualPosition: boolean
-      content: NodeContent
-      collapsed: boolean
-      childOrder: string[]
+    if (expectedCount !== undefined) {
+      expect(metrics.rects).toHaveLength(expectedCount)
     }
-  >
-  version: number
-  meta: { title: string; created: string; updated: string }
-}
-
-const updated = '2026-07-09T08:26:00.000Z'
-
-function paragraph(text: string): NodeContent {
-  return {
-    type: 'doc',
-    content: [{ type: 'paragraph', content: [{ type: 'text', text }] }],
-  }
-}
-
-function node(
-  id: string,
-  parentId: string | null,
-  text: string,
-  childOrder: string[] = [],
-): DemoDoc['nodes'][string] {
-  return {
-    id,
-    parentId,
-    position: null,
-    manualPosition: false,
-    content: paragraph(text),
-    collapsed: false,
-    childOrder,
-  }
-}
-
-function makeDoc(id: string, title: string, version: number): DemoDoc {
-  return {
-    id,
-    rootId: 'root',
-    nodes: {
-      root: node('root', null, 'TripleA AI enablement', [
-        'strategy',
-        'workflow',
-        'custom',
-        'risk',
-      ]),
-      strategy: node('strategy', 'root', 'Strategy & operating model'),
-      workflow: node('workflow', 'root', 'Workflow automation'),
-      custom: node('custom', 'root', 'Custom software systems'),
-      risk: node('risk', 'root', 'Risk & adfa'),
-    },
-    version,
-    meta: { title, created: updated, updated },
-  }
-}
-
-function makeLayoutDoc(id: string, title: string, version: number): DemoDoc {
-  const doc = makeDoc(id, title, version)
-  const branchIds = ['strategy', 'workflow', 'custom', 'risk']
-  for (const [branchIndex, branchId] of branchIds.entries()) {
-    const childIds = Array.from(
-      { length: 3 },
-      (_, childIndex) => `${branchId}-${childIndex + 1}`,
-    )
-    doc.nodes[branchId]!.childOrder = childIds
-    for (const [childIndex, childId] of childIds.entries()) {
-      doc.nodes[childId] = node(
-        childId,
-        branchId,
-        branchIndex === branchIds.length - 1 &&
-          childIndex === childIds.length - 1
-          ? 'Focused third-party governance responsibility'
-          : `${branchId} capability ${childIndex + 1}`,
+    for (const rect of metrics.rects) {
+      expect(rect.left, `${rect.text} left`).toBeGreaterThanOrEqual(8)
+      expect(rect.top, `${rect.text} top`).toBeGreaterThanOrEqual(8)
+      expect(rect.right, `${rect.text} right`).toBeLessThanOrEqual(
+        metrics.canvas.width - 8,
+      )
+      expect(rect.bottom, `${rect.text} bottom`).toBeLessThanOrEqual(
+        metrics.canvas.height - 8,
       )
     }
-  }
-  return doc
-}
-
-const docs = [
-  makeDoc('doc-copy', 'TripleA Digital enablement map copy', 15),
-  makeLayoutDoc('doc-main', 'TripleA Digital enablement map', 100),
-]
-
-async function mockD1(page: Page): Promise<void> {
-  await page.route('**/api/sessions', async (route) => {
-    const request = route.request()
-    if (request.method() === 'GET') {
-      await route.fulfill({
-        contentType: 'application/json',
-        body: JSON.stringify(
-          docs.map((doc) => ({
-            id: doc.id,
-            title: doc.meta.title,
-            updated: doc.meta.updated,
-            version: doc.version,
-          })),
-        ),
-      })
-      return
-    }
-    await route.fulfill({
-      status: 201,
-      contentType: 'application/json',
-      body: JSON.stringify({ id: docs[0].id }),
-    })
-  })
-
-  await page.route('**/api/sessions/*', async (route) => {
-    const request = route.request()
-    const id = new URL(request.url()).pathname.split('/').pop()
-    const doc = docs.find((item) => item.id === id) ?? docs[0]
-    if (request.method() === 'GET') {
-      await route.fulfill({
-        contentType: 'application/json',
-        body: JSON.stringify({
-          id: doc.id,
-          doc: JSON.stringify({ schemaVersion: 1, doc }),
-        }),
-      })
-      return
-    }
-    if (request.method() === 'PUT') {
-      await route.fulfill({
-        contentType: 'application/json',
-        body: JSON.stringify({
-          saved: true,
-          conflict: false,
-          currentVersion: doc.version,
-        }),
-      })
-      return
-    }
-    await route.fulfill({ status: 204 })
-  })
+  }).toPass({ timeout: 5_000 })
 }
 
 test.beforeEach(async ({ page }) => {
@@ -167,40 +61,7 @@ test('fit to screen keeps every rendered node inside the browser canvas with bre
   await expect(page.getByText('Saved to D1')).toBeVisible()
 
   await page.getByRole('button', { name: 'Fit to screen' }).click()
-  await page.waitForTimeout(150)
-
-  const metrics = await page.evaluate(() => {
-    const canvas = document.querySelector<HTMLElement>('.mml-canvas')
-    if (!canvas) throw new Error('canvas missing')
-    const canvasRect = canvas.getBoundingClientRect()
-    const nodes = [...document.querySelectorAll<HTMLElement>('.mml-node')]
-    if (nodes.length === 0) throw new Error('nodes missing')
-    const rects = nodes.map((node) => {
-      const rect = node.getBoundingClientRect()
-      return {
-        text: node.textContent?.trim() ?? '',
-        left: rect.left - canvasRect.left,
-        top: rect.top - canvasRect.top,
-        right: rect.right - canvasRect.left,
-        bottom: rect.bottom - canvasRect.top,
-      }
-    })
-    return {
-      canvas: { width: canvasRect.width, height: canvasRect.height },
-      rects,
-    }
-  })
-
-  for (const rect of metrics.rects) {
-    expect(rect.left, `${rect.text} left`).toBeGreaterThanOrEqual(8)
-    expect(rect.top, `${rect.text} top`).toBeGreaterThanOrEqual(8)
-    expect(rect.right, `${rect.text} right`).toBeLessThanOrEqual(
-      metrics.canvas.width - 8,
-    )
-    expect(rect.bottom, `${rect.text} bottom`).toBeLessThanOrEqual(
-      metrics.canvas.height - 8,
-    )
-  }
+  await expectRenderedNodesInsideCanvas(page)
 })
 
 test('saved map rows keep current titles and actions inside the left panel', async ({
@@ -293,55 +154,29 @@ test('stacks workspace before the wider saved-map sidebar can clip toolbar contr
 test('layout switching keeps the whole map fitted when a distant node is focused', async ({
   page,
 }) => {
-  await page.addInitScript(() => {
-    window.localStorage.setItem(
-      'mindmaplib:last-focused-node:doc-main',
-      'risk-3',
-    )
-  })
-  await page.goto('/?id=doc-main')
+  await page.addInitScript(
+    ({ docId, nodeId }) => {
+      window.localStorage.setItem(
+        `mindmaplib:last-focused-node:${docId}`,
+        nodeId,
+      )
+    },
+    { docId: NAVIGATION_DOC_ID, nodeId: NAVIGATION_FOCUSED_NODE_ID },
+  )
+  await page.goto(`/?id=${NAVIGATION_DOC_ID}`)
   await expect(page.getByText('Saved to D1')).toBeVisible()
   await expect(page.locator('.mml-node--selected')).toContainText(
-    'Focused third-party governance responsibility',
+    NAVIGATION_FOCUSED_NODE_TEXT,
   )
 
   await page.getByRole('button', { name: 'Vertical tree' }).click()
 
-  await expect(async () => {
-    const metrics = await page.evaluate(() => {
-      const canvas = document.querySelector<HTMLElement>('.mml-canvas')
-      if (!canvas) throw new Error('canvas missing')
-      const canvasRect = canvas.getBoundingClientRect()
-      const nodes = [...canvas.querySelectorAll<HTMLElement>('.mml-node')]
-      return {
-        canvas: { width: canvasRect.width, height: canvasRect.height },
-        rects: nodes.map((node) => {
-          const rect = node.getBoundingClientRect()
-          return {
-            text: node.textContent?.trim() ?? '',
-            left: rect.left - canvasRect.left,
-            top: rect.top - canvasRect.top,
-            right: rect.right - canvasRect.left,
-            bottom: rect.bottom - canvasRect.top,
-          }
-        }),
-      }
-    })
-
-    expect(metrics.rects).toHaveLength(Object.keys(docs[1]!.nodes).length)
-    for (const rect of metrics.rects) {
-      expect(rect.left, `${rect.text} left`).toBeGreaterThanOrEqual(8)
-      expect(rect.top, `${rect.text} top`).toBeGreaterThanOrEqual(8)
-      expect(rect.right, `${rect.text} right`).toBeLessThanOrEqual(
-        metrics.canvas.width - 8,
-      )
-      expect(rect.bottom, `${rect.text} bottom`).toBeLessThanOrEqual(
-        metrics.canvas.height - 8,
-      )
-    }
-  }).toPass()
+  await expectRenderedNodesInsideCanvas(
+    page,
+    Object.keys(navigationDoc.nodes).length,
+  )
 
   await expect(page.locator('.mml-node--selected')).toContainText(
-    'Focused third-party governance responsibility',
+    NAVIGATION_FOCUSED_NODE_TEXT,
   )
 })
