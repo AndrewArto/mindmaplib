@@ -1210,6 +1210,13 @@ export function App(): React.ReactElement {
       setLayout(mode)
       editor.setLayout(mode)
       fitMapToScreen()
+
+      const refitAfterMeasurements = () => fitMapToScreen()
+      if (typeof window.requestAnimationFrame === 'function') {
+        window.requestAnimationFrame(refitAfterMeasurements)
+      } else {
+        window.setTimeout(refitAfterMeasurements, 0)
+      }
     },
     [editor, fitMapToScreen],
   )

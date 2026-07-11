@@ -8,7 +8,7 @@
   "type": "module",
   "packageManager": "pnpm@10.30.0",
   "engines": {
-    "node": ">=22"
+    "node": "^22.12.0 || ^24.0.0"
   },
   "scripts": {
     "format": "prettier --write .",
@@ -18,7 +18,7 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "build": "pnpm -r build",
-    "check-boundaries": "depcruise packages/core/src --config .dependency-cruiser.cjs",
+    "check-boundaries": "node scripts/check-package-boundaries.mjs && depcruise packages/core/src packages/core/tests packages/core/tsup.config.ts packages/react/src packages/react/tests packages/react/tsup.config.ts packages/react/vitest.config.ts demo/src demo/tests demo/functions demo/pages demo/worker.ts demo/apiLimits.ts demo/vite.config.ts demo/build-worker.mjs --config .dependency-cruiser.cjs",
     "ci": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm check-boundaries",
     "changeset": "changeset",
     "test:browser": "pnpm --filter @mindmaplib/core build && pnpm --filter @mindmaplib/react build && playwright test"

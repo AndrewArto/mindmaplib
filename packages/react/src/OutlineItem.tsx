@@ -47,8 +47,6 @@ function OutlineItemComponent(props: OutlineItemProps): React.ReactElement {
     searchActive,
     onSelect,
     onToggle,
-    onEnter,
-    onDelete,
     onEdit,
     onFocusItem,
     onDragStart,
@@ -82,7 +80,9 @@ function OutlineItemComponent(props: OutlineItemProps): React.ReactElement {
       aria-setsize={ariaSetSize}
       aria-expanded={ariaExpanded}
       aria-selected={isSelected}
+      data-outline-node-id={node.id}
       tabIndex={isFocused ? 0 : -1}
+      onFocus={() => onFocusItem(node.id)}
       style={{ '--mml-level': ariaLevel } as React.CSSProperties}
       draggable={isDraggable && !searchActive}
       onDragStart={(e) => onDragStart(e, node.id)}
@@ -90,32 +90,6 @@ function OutlineItemComponent(props: OutlineItemProps): React.ReactElement {
       onDragLeave={onDragLeave}
       onDrop={(e) => onDrop(e, node.id)}
       onClick={() => onSelect(node.id)}
-      onKeyDown={(e) => {
-        switch (e.key) {
-          case 'ArrowUp':
-          case 'ArrowDown':
-          case 'ArrowLeft':
-          case 'ArrowRight':
-          case 'Home':
-          case 'End':
-          case 'Enter':
-          case ' ':
-          case 'Delete':
-          case 'Backspace':
-          case 'F2':
-          case 'Escape':
-            // Keyboard handled at OutlineView level via delegation
-            break
-          default:
-            return
-        }
-        e.preventDefault()
-        if (e.key === 'Enter') onEnter(node.id)
-        else if (e.key === ' ') onSelect(node.id)
-        else if (e.key === 'F2') onEdit(node.id)
-        else if (e.key === 'Delete' || e.key === 'Backspace') onDelete(node.id)
-        else if (e.key === 'Escape') onFocusItem('')
-      }}
     >
       <div className="mml-outline-row">
         {hasChildren && (

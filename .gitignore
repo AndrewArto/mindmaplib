@@ -6,3 +6,6 @@ dist/
 .DS_Store
 coverage/
 .gitnexus/
+test-results/
+playwright-report/
+blob-report/

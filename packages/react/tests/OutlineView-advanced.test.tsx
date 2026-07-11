@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { render, fireEvent } from '@testing-library/react'
+import { describe, it, expect, vi } from 'vitest'
+import { act, render, fireEvent, waitFor } from '@testing-library/react'
 import { OutlineView } from '../src/OutlineView.js'
 import { MindmapEditor, createDoc } from '@mindmaplib/core'
 
@@ -197,5 +197,75 @@ describe('OutlineView advanced', () => {
     fireEvent.focus(tree)
     fireEvent.keyDown(tree, { key: 'End' })
     expect(container.querySelector('[tabindex="0"]')).toBeTruthy()
+  })
+
+  it('does not steal focus when async delete resolves after navigation', async () => {
+    const editor = makeDeepTree()
+    let resolveConfirm: ((confirmed: boolean) => void) | null = null
+    const confirmDelete = vi.fn(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolveConfirm = resolve
+        }),
+    )
+    const { container } = render(
+      <OutlineView
+        editor={editor}
+        selectedId={null}
+        confirmDelete={confirmDelete}
+      />,
+    )
+    const tree = container.querySelector('[role="tree"]') as HTMLElement
+    fireEvent.focus(tree)
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' })
+    await waitFor(() =>
+      expect(document.activeElement?.textContent).toContain('Alpha'),
+    )
+
+    fireEvent.keyDown(document.activeElement!, { key: 'Delete' })
+    expect(confirmDelete).toHaveBeenCalledOnce()
+    fireEvent.keyDown(document.activeElement!, { key: 'End' })
+    await waitFor(() =>
+      expect(document.activeElement?.textContent).toContain('Beta'),
+    )
+
+    await act(async () => {
+      resolveConfirm?.(true)
+      await Promise.resolve()
+    })
+
+    await waitFor(() => {
+      expect(container.textContent).not.toContain('Alpha')
+      expect(document.activeElement?.textContent).toContain('Beta')
+    })
+  })
+
+  it('keeps the node and focus when async delete confirmation rejects', async () => {
+    const editor = makeDeepTree()
+    const confirmDelete = vi.fn(() =>
+      Promise.reject(new Error('confirmation unavailable')),
+    )
+    const { container } = render(
+      <OutlineView
+        editor={editor}
+        selectedId={null}
+        confirmDelete={confirmDelete}
+      />,
+    )
+    const tree = container.querySelector('[role="tree"]') as HTMLElement
+    fireEvent.focus(tree)
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' })
+    await waitFor(() =>
+      expect(document.activeElement?.textContent).toContain('Alpha'),
+    )
+
+    fireEvent.keyDown(document.activeElement!, { key: 'Delete' })
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(container.textContent).toContain('Alpha')
+    expect(document.activeElement?.textContent).toContain('Alpha')
   })
 })
