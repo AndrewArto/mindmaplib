@@ -180,3 +180,71 @@ test('layout switching keeps the whole map fitted when a distant node is focused
     NAVIGATION_FOCUSED_NODE_TEXT,
   )
 })
+
+test('explicit auto-layout discards the active node manual position', async ({
+  page,
+}) => {
+  await page.goto(`/?id=${NAVIGATION_DOC_ID}`)
+  await expect(page.getByText('Saved to D1')).toBeVisible()
+
+  const tree = page.getByRole('tree', { name: 'Mindmap outline' })
+  await tree.focus()
+  await page.keyboard.press('End')
+  await expect(page.locator('[role="treeitem"]:focus')).toContainText(
+    NAVIGATION_FOCUSED_NODE_TEXT,
+  )
+  await page.keyboard.press('Enter')
+
+  const selected = page.locator('.mml-node--selected')
+  await expect(selected).toContainText(NAVIGATION_FOCUSED_NODE_TEXT)
+  const selectedBox = await selected.boundingBox()
+  const canvasBox = await page.locator('.mml-canvas').boundingBox()
+  if (!selectedBox || !canvasBox) throw new Error('layout geometry missing')
+
+  await page.mouse.move(
+    selectedBox.x + selectedBox.width / 2,
+    selectedBox.y + selectedBox.height / 2,
+  )
+  await page.mouse.down()
+  await page.mouse.move(
+    canvasBox.x + canvasBox.width / 2,
+    canvasBox.y + canvasBox.height - 60,
+    { steps: 5 },
+  )
+  await page.mouse.up()
+
+  const draggedBox = await selected.boundingBox()
+  if (!draggedBox) throw new Error('dragged node geometry missing')
+  expect(
+    Math.hypot(draggedBox.x - selectedBox.x, draggedBox.y - selectedBox.y),
+  ).toBeGreaterThan(50)
+
+  await page.getByRole('button', { name: 'Vertical tree' }).click()
+
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => {
+        const selectedNode = document.querySelector<HTMLElement>(
+          '.mml-node--selected',
+        )
+        const sibling = [
+          ...document.querySelectorAll<HTMLElement>('.mml-node'),
+        ].find((node) => node.textContent?.trim() === 'risk capability 2')
+        if (!selectedNode || !sibling) return Number.POSITIVE_INFINITY
+        const selectedRect = selectedNode.getBoundingClientRect()
+        const siblingRect = sibling.getBoundingClientRect()
+        return Math.abs(
+          selectedRect.top +
+            selectedRect.height / 2 -
+            (siblingRect.top + siblingRect.height / 2),
+        )
+      })
+    })
+    .toBeLessThan(2)
+
+  await expect(selected).toContainText(NAVIGATION_FOCUSED_NODE_TEXT)
+  await expectRenderedNodesInsideCanvas(
+    page,
+    Object.keys(navigationDoc.nodes).length,
+  )
+})

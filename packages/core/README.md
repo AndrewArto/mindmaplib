@@ -31,6 +31,9 @@ const json = serialize(editor.getDoc())
 // Layout
 editor.setLayout('tree-horizontal')
 
+// Explicit toolbar reflow: discard positions previously set by node dragging
+editor.setLayout('tree-vertical', { resetManualPositions: true })
+
 // Undo/redo
 editor.undo()
 editor.redo()

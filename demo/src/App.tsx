@@ -1208,7 +1208,7 @@ export function App(): React.ReactElement {
   const applyLayout = useCallback(
     (mode: LayoutMode) => {
       setLayout(mode)
-      editor.setLayout(mode)
+      editor.setLayout(mode, { resetManualPositions: true })
       fitMapToScreen()
 
       const refitAfterMeasurements = () => fitMapToScreen()

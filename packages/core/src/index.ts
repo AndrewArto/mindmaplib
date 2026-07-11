@@ -81,4 +81,4 @@ export { InMemoryStore } from './store.js'
 
 // --- Editor ---
 export { MindmapEditor } from './editor.js'
-export type { MindmapEditorOptions } from './editor.js'
+export type { MindmapEditorOptions, SetLayoutOptions } from './editor.js'
