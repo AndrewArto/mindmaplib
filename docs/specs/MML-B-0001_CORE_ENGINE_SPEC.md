@@ -546,7 +546,8 @@ function deserialize(json: string): MindmapDoc  // validates, migrates if needed
 // --- Editor state ---
 interface EditorState {
   doc: MindmapDoc
-  selectedNodeId: string | null     // currently selected node in canvas
+  selectedNodeId: string | null     // primary selected node in canvas
+  selectedNodeIds: readonly string[] // ordered, unique current selection
   editingNodeId: string | null      // node with active TipTap editor
   viewport: { x: number; y: number; zoom: number }  // pan/zoom transform
   layoutMode: LayoutMode
@@ -569,11 +570,15 @@ class MindmapEditor {
   promoteNode(nodeId: string): void  // move to parent's sibling level
   updateContent(nodeId: string, content: NodeContent): void
   setPosition(nodeId: string, position: { x: number; y: number }): void
+  setPositionsDirect(updates: readonly PositionUpdate[], previewId?: number): number
+  commitPositions(updates: readonly PositionUpdate[], previewId?: number): void
+  cancelPositionPreview(previewId?: number): void
   resetManualPosition(nodeId: string): void  // return node to auto-layout
   toggleCollapsed(nodeId: string): void
 
   // Selection and editing
   select(nodeId: string | null): void
+  setSelection(nodeIds: readonly string[], primaryNodeId?: string | null): void
   startEditing(nodeId: string): void
   stopEditing(): void
 

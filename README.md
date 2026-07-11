@@ -17,7 +17,8 @@ your React app, plug in your database, ship.
 
 ## What you get
 
-- **Canvas view** — pan, zoom, drag nodes, draw edges, inline rich-text
+- **Canvas view** — pan, zoom, Shift-drag marquee selection, atomic multi-node
+  drag, draw edges, inline rich-text
   editing. SVG edges + HTML content layer. Single viewport transform.
 - **Outline view** — hierarchical indented list, synced to the same document.
   Collapse/expand, drag-and-drop reparenting, click-to-focus in canvas.

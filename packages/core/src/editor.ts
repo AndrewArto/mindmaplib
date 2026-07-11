@@ -13,6 +13,7 @@ import type {
   NodeContent,
   SaveResult,
   Position,
+  PositionUpdate,
   Transaction,
   NodeMeasures,
 } from './types.js'
@@ -55,6 +56,7 @@ const DEFAULT_FIT_NODE_SIZE = { width: 120, height: 40 }
 export class MindmapEditor {
   private doc: MindmapDoc
   private selectedNodeId: string | null = null
+  private selectedNodeIds: string[] = []
   private editingNodeId: string | null = null
   private viewport: { x: number; y: number; zoom: number } = {
     x: 0,
@@ -71,7 +73,14 @@ export class MindmapEditor {
   private lastSavedVersion: number
   private lastTransaction: Transaction | null = null
   private mergeNextLayoutWithStructuralHistory = false
-  private dragSnapshot: MindmapDoc | null = null
+  private positionPreview: {
+    id: number
+    snapshot: MindmapDoc
+    nodeIds: string[]
+    lastTransaction: Transaction | null
+    mergeNextLayoutWithStructuralHistory: boolean
+  } | null = null
+  private nextPositionPreviewId = 1
 
   private readonly listeners = new Set<(state: EditorState) => void>()
 
@@ -96,6 +105,7 @@ export class MindmapEditor {
     return {
       doc: this.doc,
       selectedNodeId: this.selectedNodeId,
+      selectedNodeIds: [...this.selectedNodeIds],
       editingNodeId: this.editingNodeId,
       viewport: { ...this.viewport },
       layoutMode: this.layoutMode,
@@ -105,8 +115,10 @@ export class MindmapEditor {
   // --- Mutations -------------------------------------------------------
 
   apply(tx: Transaction, opts?: { strict?: boolean }): void {
-    const next = applyTransaction(this.doc, tx, opts)
-    this.pushUndo(this.doc)
+    const committedDoc = this.positionPreview?.snapshot ?? this.doc
+    const next = applyTransaction(committedDoc, tx, opts)
+    this.positionPreview = null
+    this.pushUndo(committedDoc)
     this.redoStack = []
     this.doc = next
     this.lastTransaction = tx
@@ -200,41 +212,145 @@ export class MindmapEditor {
   }
 
   /**
-   * Update node position without creating an undo entry or incrementing the
-   * document version. Used during drag: many updates, one undo entry on
-   * commit. Call commitPosition when the drag ends.
+   * Preview one or more node positions atomically without an undo entry or
+   * revision increment. Returns a token that guards subsequent preview and
+   * commit calls against stale or interleaved interactions.
    */
-  setPositionDirect(nodeId: string, position: Position): void {
-    if (this.dragSnapshot === null) {
-      // Capture the pre-drag state on the first direct call.
-      this.dragSnapshot = this.doc
+  setPositionsDirect(
+    updates: readonly PositionUpdate[],
+    previewId?: number,
+  ): number {
+    if (updates.length === 0) {
+      if (previewId !== undefined && this.positionPreview?.id !== previewId) {
+        throw new MindmapError(
+          'Position preview is stale',
+          'INVALID_TRANSACTION',
+        )
+      }
+      return this.positionPreview?.id ?? 0
     }
-    const tx = buildTransaction(this.doc, createSetPositionOp(nodeId, position))
+    const nodeIds = this.validatePositionUpdateBatch(updates)
+    const activePreview = this.positionPreview
+    if (activePreview) {
+      if (previewId !== undefined && previewId !== activePreview.id) {
+        throw new MindmapError(
+          'Position preview is stale',
+          'INVALID_TRANSACTION',
+        )
+      }
+      if (!this.sameNodeIds(activePreview.nodeIds, nodeIds)) {
+        throw new MindmapError(
+          'Position preview node set changed during drag',
+          'INVALID_TRANSACTION',
+        )
+      }
+      if (
+        this.doc.id !== activePreview.snapshot.id ||
+        this.doc.version !== activePreview.snapshot.version
+      ) {
+        this.discardPositionPreview(false)
+        throw new MindmapError(
+          'Position preview is stale',
+          'INVALID_TRANSACTION',
+        )
+      }
+    } else if (previewId !== undefined) {
+      throw new MindmapError('Position preview is stale', 'INVALID_TRANSACTION')
+    }
+
+    const tx = buildTransaction(
+      this.doc,
+      updates.map(({ nodeId, position }) =>
+        createSetPositionOp(nodeId, position),
+      ),
+    )
+    const beforePreview = this.doc
+    const previousLastTransaction = this.lastTransaction
+    const previousMergeFlag = this.mergeNextLayoutWithStructuralHistory
     const next = applyTransaction(this.doc, tx)
-    // Revert version bump: direct updates don't create new revisions.
-    this.doc = { ...next, version: this.doc.version }
+    if (!this.positionPreview) {
+      this.positionPreview = {
+        id: this.nextPositionPreviewId++,
+        snapshot: beforePreview,
+        nodeIds,
+        lastTransaction: previousLastTransaction,
+        mergeNextLayoutWithStructuralHistory: previousMergeFlag,
+      }
+    }
+    this.doc = { ...next, version: this.positionPreview.snapshot.version }
     this.lastTransaction = tx
     this.mergeNextLayoutWithStructuralHistory = false
     this.notify()
+    return this.positionPreview.id
   }
 
-  /**
-   * Commit the current document state as a single undo entry.
-   * Captures the pre-drag state (saved by the first setPositionDirect call)
-   * so undo reverts the entire drag in one step.
-   */
-  commitPosition(nodeId: string, position: Position): void {
-    const snapshot = this.dragSnapshot ?? this.doc
-    // Validate first: build + apply BEFORE mutating undo/redo state
-    const tx = buildTransaction(this.doc, createSetPositionOp(nodeId, position))
-    const next = applyTransaction(this.doc, tx) // throws if invalid
+  setPositionDirect(nodeId: string, position: Position): void {
+    this.setPositionsDirect([{ nodeId, position }])
+  }
+
+  /** Commit a position batch as one transaction and one undo entry. */
+  commitPositions(
+    updates: readonly PositionUpdate[],
+    previewId?: number,
+  ): void {
+    if (updates.length === 0) {
+      this.cancelPositionPreview(previewId)
+      return
+    }
+    const nodeIds = this.validatePositionUpdateBatch(updates)
+    const activePreview = this.positionPreview
+    if (activePreview) {
+      if (previewId !== undefined && previewId !== activePreview.id) {
+        throw new MindmapError(
+          'Position preview is stale',
+          'INVALID_TRANSACTION',
+        )
+      }
+      if (!this.sameNodeIds(activePreview.nodeIds, nodeIds)) {
+        throw new MindmapError(
+          'Committed position batch must match the active preview',
+          'INVALID_TRANSACTION',
+        )
+      }
+      if (
+        this.doc.id !== activePreview.snapshot.id ||
+        this.doc.version !== activePreview.snapshot.version
+      ) {
+        this.discardPositionPreview(false)
+        throw new MindmapError(
+          'Position preview is stale',
+          'INVALID_TRANSACTION',
+        )
+      }
+    } else if (previewId !== undefined) {
+      throw new MindmapError('Position preview is stale', 'INVALID_TRANSACTION')
+    }
+
+    const snapshot = activePreview?.snapshot ?? this.doc
+    const tx = buildTransaction(
+      this.doc,
+      updates.map(({ nodeId, position }) =>
+        createSetPositionOp(nodeId, position),
+      ),
+    )
+    const next = applyTransaction(this.doc, tx)
     this.pushUndo(snapshot)
     this.redoStack = []
     this.doc = next
     this.lastTransaction = tx
     this.mergeNextLayoutWithStructuralHistory = false
-    this.dragSnapshot = null
+    this.positionPreview = null
     this.notify()
+  }
+
+  commitPosition(nodeId: string, position: Position): void {
+    this.commitPositions([{ nodeId, position }])
+  }
+
+  cancelPositionPreview(previewId?: number): void {
+    if (!this.positionPreview) return
+    if (previewId !== undefined && previewId !== this.positionPreview.id) return
+    this.discardPositionPreview(true)
   }
 
   resetManualPosition(nodeId: string): void {
@@ -247,9 +363,26 @@ export class MindmapEditor {
 
   // --- Selection and editing ------------------------------------------
 
-  select(nodeId: string | null): void {
-    this.selectedNodeId = nodeId
+  setSelection(
+    nodeIds: readonly string[],
+    primaryNodeId?: string | null,
+  ): void {
+    const seen = new Set<string>()
+    this.selectedNodeIds = nodeIds.filter((nodeId) => {
+      if (seen.has(nodeId) || !Object.hasOwn(this.doc.nodes, nodeId))
+        return false
+      seen.add(nodeId)
+      return true
+    })
+    this.selectedNodeId =
+      primaryNodeId && this.selectedNodeIds.includes(primaryNodeId)
+        ? primaryNodeId
+        : (this.selectedNodeIds[0] ?? null)
     this.notify()
+  }
+
+  select(nodeId: string | null): void {
+    this.setSelection(nodeId === null ? [] : [nodeId])
   }
 
   startEditing(nodeId: string): void {
@@ -327,6 +460,7 @@ export class MindmapEditor {
   // --- Layout ----------------------------------------------------------
 
   setLayout(mode: LayoutMode, options?: SetLayoutOptions): void {
+    this.discardPositionPreview(false)
     const resetManualPositions =
       mode !== 'free-float' && (options?.resetManualPositions ?? false)
     const mergeWithPreviousStructuralChange =
@@ -390,7 +524,7 @@ export class MindmapEditor {
     }
     const prev = this.nodeMeasures
     this.nodeMeasures = filtered
-    if (this.layoutMode === 'free-float') return
+    if (this.positionPreview || this.layoutMode === 'free-float') return
     // Skip relayout if effective max dimensions are unchanged
     const prevVals = Object.values(prev)
     const newVals = Object.values(filtered)
@@ -423,7 +557,12 @@ export class MindmapEditor {
   // --- Undo / redo -----------------------------------------------------
 
   undo(): void {
-    if (this.undoStack.length === 0) return
+    const discardedPreview = this.positionPreview !== null
+    this.discardPositionPreview(false)
+    if (this.undoStack.length === 0) {
+      if (discardedPreview) this.notify()
+      return
+    }
     this.mergeNextLayoutWithStructuralHistory = false
     this.redoStack.push(this.doc)
     const prev = this.undoStack.pop()!
@@ -432,7 +571,12 @@ export class MindmapEditor {
   }
 
   redo(): void {
-    if (this.redoStack.length === 0) return
+    const discardedPreview = this.positionPreview !== null
+    this.discardPositionPreview(false)
+    if (this.redoStack.length === 0) {
+      if (discardedPreview) this.notify()
+      return
+    }
     this.mergeNextLayoutWithStructuralHistory = false
     this.undoStack.push(this.doc)
     const next = this.redoStack.pop()!
@@ -469,6 +613,9 @@ export class MindmapEditor {
 
   async save(): Promise<SaveResult | undefined> {
     if (!this.store) return undefined
+    if (this.positionPreview) {
+      throw new Error('Cannot save while a position preview is active')
+    }
     const savingVersion = this.doc.version
     const result = await this.store.save(this.doc, {
       expectedVersion: this.lastSavedVersion,
@@ -492,11 +639,12 @@ export class MindmapEditor {
     this.undoStack = []
     this.redoStack = []
     this.selectedNodeId = null
+    this.selectedNodeIds = []
     this.editingNodeId = null
     this.lastSavedVersion = loaded.version
     this.lastTransaction = null
     this.mergeNextLayoutWithStructuralHistory = false
-    this.dragSnapshot = null
+    this.positionPreview = null
     this.notify()
   }
 
@@ -514,6 +662,44 @@ export class MindmapEditor {
   }
 
   // --- Internal --------------------------------------------------------
+
+  private validatePositionUpdateBatch(
+    updates: readonly PositionUpdate[],
+  ): string[] {
+    const seen = new Set<string>()
+    for (const update of updates) {
+      if (seen.has(update.nodeId)) {
+        throw new MindmapError(
+          `Duplicate position update for node ${update.nodeId}`,
+          'INVALID_TRANSACTION',
+          update.nodeId,
+        )
+      }
+      seen.add(update.nodeId)
+    }
+    return [...seen]
+  }
+
+  private sameNodeIds(
+    left: readonly string[],
+    right: readonly string[],
+  ): boolean {
+    return (
+      left.length === right.length &&
+      left.every((nodeId, index) => nodeId === right[index])
+    )
+  }
+
+  private discardPositionPreview(notify: boolean): void {
+    const preview = this.positionPreview
+    if (!preview) return
+    this.doc = preview.snapshot
+    this.lastTransaction = preview.lastTransaction
+    this.mergeNextLayoutWithStructuralHistory =
+      preview.mergeNextLayoutWithStructuralHistory
+    this.positionPreview = null
+    if (notify) this.notify()
+  }
 
   private pushUndo(doc: MindmapDoc): void {
     this.undoStack.push(doc)
@@ -538,11 +724,14 @@ export class MindmapEditor {
 
   private notify(): void {
     // Clear stale selection/editing references before notifying subscribers.
+    this.selectedNodeIds = this.selectedNodeIds.filter((nodeId) =>
+      Object.hasOwn(this.doc.nodes, nodeId),
+    )
     if (
-      this.selectedNodeId !== null &&
-      !Object.hasOwn(this.doc.nodes, this.selectedNodeId)
+      this.selectedNodeId === null ||
+      !this.selectedNodeIds.includes(this.selectedNodeId)
     ) {
-      this.selectedNodeId = null
+      this.selectedNodeId = this.selectedNodeIds[0] ?? null
     }
     if (
       this.editingNodeId !== null &&

@@ -126,7 +126,8 @@ export type LayoutMode =
 
 export interface EditorState {
   doc: MindmapDoc
-  selectedNodeId: string | null // currently selected node in canvas
+  selectedNodeId: string | null // primary selected node in canvas
+  selectedNodeIds: readonly string[] // ordered, unique selected node IDs
   editingNodeId: string | null // node with active editor
   viewport: { x: number; y: number; zoom: number } // pan/zoom transform
   layoutMode: LayoutMode
@@ -135,6 +136,11 @@ export interface EditorState {
 // ---------------------------------------------------------------------------
 // Layout
 // ---------------------------------------------------------------------------
+
+export interface PositionUpdate {
+  nodeId: string
+  position: Position
+}
 
 export interface NodeMeasure {
   width: number

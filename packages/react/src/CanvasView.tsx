@@ -1,4 +1,4 @@
-import { useRef, useCallback, useMemo, useEffect } from 'react'
+import { useRef, useCallback, useMemo, useEffect, useState } from 'react'
 import { useEditor } from './hooks/useEditor.js'
 import { useKeyboard } from './hooks/useKeyboard.js'
 import { useNodeMeasures } from './hooks/useNodeMeasures.js'
@@ -7,11 +7,15 @@ import { NodeView } from './NodeView.js'
 import { BackgroundGrid } from './BackgroundGrid.js'
 import type { CanvasViewProps } from './types.js'
 import { MIN_ZOOM, MAX_ZOOM, ZOOM_WHEEL_FACTOR } from './types.js'
+import type { PositionUpdate } from '@mindmaplib/core'
 
 type Viewport = { x: number; y: number; zoom: number }
 
 // Viewport culling: only render nodes within visible bounds + margin
 const CULL_MARGIN = 200
+const INTERACTION_THRESHOLD = 4
+
+type MarqueeRect = { left: number; top: number; width: number; height: number }
 
 function isNodeVisible(
   nodePos: { x: number; y: number } | null,
@@ -55,10 +59,33 @@ function CanvasViewComponent({
     vpY: number
   } | null>(null)
   const dragState = useRef<{
-    nodeId: string
-    offsetX: number
-    offsetY: number
+    startClientX: number
+    startClientY: number
+    zoom: number
+    startPositions: PositionUpdate[]
+    finalPositions: PositionUpdate[] | null
+    previewId: number | null
+    activated: boolean
   } | null>(null)
+  const marqueeState = useRef<{
+    startLocalX: number
+    startLocalY: number
+    viewport: Viewport
+    candidates: Array<{
+      nodeId: string
+      left: number
+      top: number
+      right: number
+      bottom: number
+    }>
+    hitIds: string[]
+    activated: boolean
+  } | null>(null)
+  const [marqueeRect, setMarqueeRect] = useState<MarqueeRect | null>(null)
+  const [marqueeHitIds, setMarqueeHitIds] = useState<string[]>([])
+  const finishInteractionRef = useRef<(event?: MouseEvent) => void>(() => {})
+  const suppressViewportAdjustmentRef = useRef(false)
+  const viewportSuppressionTimerRef = useRef<number | null>(null)
 
   const state = useEditor(editor)
   // Keep latest viewport and doc in refs so handlers stay stable
@@ -91,7 +118,31 @@ function CanvasViewComponent({
     }
   }, [editor])
 
-  const { doc, viewport, selectedNodeId, editingNodeId, layoutMode } = state
+  const {
+    doc,
+    viewport,
+    selectedNodeId,
+    selectedNodeIds,
+    editingNodeId,
+    layoutMode,
+  } = state
+  const selectedIdSet = useMemo(
+    () => new Set(selectedNodeIds),
+    [selectedNodeIds],
+  )
+  const renderedSelectedIdSet = useMemo(
+    () => (marqueeRect ? new Set(marqueeHitIds) : selectedIdSet),
+    [marqueeRect, marqueeHitIds, selectedIdSet],
+  )
+  const cullingExemptIdSet = useMemo(() => {
+    if (marqueeRect) return new Set(marqueeHitIds)
+    if (dragState.current) {
+      return new Set(
+        dragState.current.startPositions.map(({ nodeId }) => nodeId),
+      )
+    }
+    return new Set(selectedNodeId ? [selectedNodeId] : [])
+  }, [doc, marqueeRect, marqueeHitIds, selectedNodeId])
   const containerW = containerRef.current?.clientWidth ?? 800
   const containerH = containerRef.current?.clientHeight ?? 600
 
@@ -143,10 +194,12 @@ function CanvasViewComponent({
       // Always render the editing AND selected node, even if off-screen.
       // Without this, after Escape from editing the selected node can be
       // culled, leaving no visible selection — arrow navigation appears dead.
-      if (node.id === editingNodeId || node.id === selectedNodeId) return true
+      if (node.id === editingNodeId || cullingExemptIdSet.has(node.id)) {
+        return true
+      }
       return isNodeVisible(node.position, viewport, containerW, containerH)
     })
-  }, [doc, viewport, containerW, containerH, editingNodeId, selectedNodeId])
+  }, [doc, viewport, containerW, containerH, editingNodeId, cullingExemptIdSet])
 
   // Global undo/redo: works regardless of canvas focus.
   // The canvas onKeyDown only fires when the canvas div has focus, which
@@ -186,6 +239,13 @@ function CanvasViewComponent({
   }, [editor])
 
   useEffect(() => {
+    if (
+      suppressViewportAdjustmentRef.current ||
+      dragState.current ||
+      marqueeState.current
+    ) {
+      return
+    }
     if (!selectToCenter || !selectedNodeId) return
     const node = doc.nodes[selectedNodeId]
     const position = node?.position
@@ -220,6 +280,13 @@ function CanvasViewComponent({
   // a ref and do NOT depend on viewport updates: user pan/zoom must not be
   // pulled back just because the selected node crosses the margin.
   useEffect(() => {
+    if (
+      suppressViewportAdjustmentRef.current ||
+      dragState.current ||
+      marqueeState.current
+    ) {
+      return
+    }
     if (!selectedNodeId) return
     if (containerW < 50 || containerH < 50) return
     const node = doc.nodes[selectedNodeId]
@@ -258,28 +325,97 @@ function CanvasViewComponent({
     }
   }, [selectedNodeId, doc, measures, containerW, containerH, editor])
 
-  // Track drag final position for commitPosition on mouseup
-  const dragFinalPos = useRef<{ x: number; y: number } | null>(null)
-
-  // Document-level handlers: stable (deps [editor] only) because they read
-  // viewport from viewportRef. This ensures add/removeEventListener reference
-  // the same function instance, preventing listener leaks (P2 fix).
-
   const handleDragMove = useCallback(
     (e: MouseEvent) => {
-      const vp = viewportRef.current
-      if (dragState.current) {
-        const { nodeId, offsetX, offsetY } = dragState.current
-        const rect = containerRef.current!.getBoundingClientRect()
-        const screenX = e.clientX - rect.left
-        const screenY = e.clientY - rect.top
-        const docX = (screenX - vp.x) / vp.zoom - offsetX
-        const docY = (screenY - vp.y) / vp.zoom - offsetY
-        editor.setPositionDirect(nodeId, { x: docX, y: docY })
-        dragFinalPos.current = { x: docX, y: docY }
+      const container = containerRef.current
+      if (!container) return
+      if (e.isTrusted && (e.buttons & 1) === 0) {
+        finishInteractionRef.current()
         return
       }
+
+      if (marqueeState.current) {
+        const interaction = marqueeState.current
+        const rect = container.getBoundingClientRect()
+        const rawLocalX = e.clientX - rect.left
+        const rawLocalY = e.clientY - rect.top
+        const currentLocalX =
+          rect.width > 0
+            ? Math.min(Math.max(rawLocalX, 0), rect.width)
+            : rawLocalX
+        const currentLocalY =
+          rect.height > 0
+            ? Math.min(Math.max(rawLocalY, 0), rect.height)
+            : rawLocalY
+        const dx = currentLocalX - interaction.startLocalX
+        const dy = currentLocalY - interaction.startLocalY
+        if (
+          !interaction.activated &&
+          Math.hypot(dx, dy) < INTERACTION_THRESHOLD
+        ) {
+          return
+        }
+        interaction.activated = true
+        const left = Math.min(interaction.startLocalX, currentLocalX)
+        const top = Math.min(interaction.startLocalY, currentLocalY)
+        const right = Math.max(interaction.startLocalX, currentLocalX)
+        const bottom = Math.max(interaction.startLocalY, currentLocalY)
+        setMarqueeRect({ left, top, width: right - left, height: bottom - top })
+
+        const docLeft =
+          (left - interaction.viewport.x) / interaction.viewport.zoom
+        const docTop =
+          (top - interaction.viewport.y) / interaction.viewport.zoom
+        const docRight =
+          (right - interaction.viewport.x) / interaction.viewport.zoom
+        const docBottom =
+          (bottom - interaction.viewport.y) / interaction.viewport.zoom
+        interaction.hitIds = interaction.candidates
+          .filter(
+            (candidate) =>
+              candidate.left <= docRight &&
+              candidate.right >= docLeft &&
+              candidate.top <= docBottom &&
+              candidate.bottom >= docTop,
+          )
+          .map((candidate) => candidate.nodeId)
+        setMarqueeHitIds(interaction.hitIds)
+        return
+      }
+
+      if (dragState.current) {
+        const interaction = dragState.current
+        const dx = e.clientX - interaction.startClientX
+        const dy = e.clientY - interaction.startClientY
+        if (
+          !interaction.activated &&
+          Math.hypot(dx, dy) < INTERACTION_THRESHOLD
+        ) {
+          return
+        }
+        interaction.activated = true
+        const docDx = dx / interaction.zoom
+        const docDy = dy / interaction.zoom
+        const updates = interaction.startPositions.map(
+          ({ nodeId, position }) => ({
+            nodeId,
+            position: { x: position.x + docDx, y: position.y + docDy },
+          }),
+        )
+        try {
+          interaction.previewId = editor.setPositionsDirect(
+            updates,
+            interaction.previewId ?? undefined,
+          )
+          interaction.finalPositions = updates
+        } catch {
+          finishInteractionRef.current()
+        }
+        return
+      }
+
       if (panState.current) {
+        const vp = viewportRef.current
         const dx = e.clientX - panState.current.startX
         const dy = e.clientY - panState.current.startY
         editor.setViewport({
@@ -292,95 +428,187 @@ function CanvasViewComponent({
     [editor],
   )
 
-  const handleDragEnd = useCallback(() => {
-    if (dragState.current && dragFinalPos.current) {
-      editor.commitPosition(dragState.current.nodeId, dragFinalPos.current)
+  const suppressViewportAdjustment = useCallback(() => {
+    suppressViewportAdjustmentRef.current = true
+    if (viewportSuppressionTimerRef.current !== null) {
+      window.clearTimeout(viewportSuppressionTimerRef.current)
     }
-    dragState.current = null
-    dragFinalPos.current = null
-    panState.current = null
-    document.removeEventListener('mousemove', handleDragMove)
-    document.removeEventListener('mouseup', handleDragEnd)
-  }, [editor, handleDragMove])
+    viewportSuppressionTimerRef.current = window.setTimeout(() => {
+      suppressViewportAdjustmentRef.current = false
+      viewportSuppressionTimerRef.current = null
+    }, 0)
+  }, [])
 
-  // Unmount cleanup: commit pending drag, then remove document listeners
-  // if component unmounts during an active pan/drag (P2 fixes from codex r2/r3)
-  useEffect(() => {
-    return () => {
-      // If a drag was in progress, commit the final position so the editor
-      // gets proper version bump + undo entry. Without this, setPositionDirect
-      // changes are lost without undo semantics.
-      if (dragState.current && dragFinalPos.current) {
-        editor.commitPosition(dragState.current.nodeId, dragFinalPos.current)
+  const handleDragEnd = useCallback(
+    (event?: MouseEvent) => {
+      if (event && event.button !== 0) return
+      const drag = dragState.current
+      const marquee = marqueeState.current
+      try {
+        if (marquee?.activated) {
+          suppressViewportAdjustment()
+          editor.setSelection(marquee.hitIds)
+        }
+        if (drag?.activated && drag.finalPositions) {
+          suppressViewportAdjustment()
+          editor.commitPositions(
+            drag.finalPositions,
+            drag.previewId ?? undefined,
+          )
+        }
+      } catch {
+        if (drag?.previewId !== null && drag?.previewId !== undefined) {
+          editor.cancelPositionPreview(drag.previewId)
+        }
+      } finally {
+        marqueeState.current = null
+        dragState.current = null
+        panState.current = null
+        setMarqueeRect(null)
+        setMarqueeHitIds([])
+        document.removeEventListener('mousemove', handleDragMove)
+        document.removeEventListener('mouseup', handleDragEnd)
       }
-      document.removeEventListener('mousemove', handleDragMove)
-      document.removeEventListener('mouseup', handleDragEnd)
-      panState.current = null
-      dragState.current = null
-      dragFinalPos.current = null
+    },
+    [editor, handleDragMove, suppressViewportAdjustment],
+  )
+  finishInteractionRef.current = handleDragEnd
+
+  useEffect(() => {
+    const cancelInteraction = () => {
+      const drag = dragState.current
+      try {
+        if (drag?.previewId !== null && drag?.previewId !== undefined) {
+          editor.cancelPositionPreview(drag.previewId)
+        }
+      } finally {
+        marqueeState.current = null
+        dragState.current = null
+        panState.current = null
+        setMarqueeRect(null)
+        setMarqueeHitIds([])
+        document.removeEventListener('mousemove', handleDragMove)
+        document.removeEventListener('mouseup', handleDragEnd)
+      }
+    }
+    window.addEventListener('blur', cancelInteraction)
+    return () => {
+      window.removeEventListener('blur', cancelInteraction)
+      const drag = dragState.current
+      try {
+        if (drag?.activated && drag.finalPositions) {
+          editor.commitPositions(
+            drag.finalPositions,
+            drag.previewId ?? undefined,
+          )
+        } else if (drag?.previewId !== null && drag?.previewId !== undefined) {
+          editor.cancelPositionPreview(drag.previewId)
+        }
+      } catch {
+        if (drag?.previewId !== null && drag?.previewId !== undefined) {
+          editor.cancelPositionPreview(drag.previewId)
+        }
+      } finally {
+        document.removeEventListener('mousemove', handleDragMove)
+        document.removeEventListener('mouseup', handleDragEnd)
+        if (viewportSuppressionTimerRef.current !== null) {
+          window.clearTimeout(viewportSuppressionTimerRef.current)
+        }
+        panState.current = null
+        dragState.current = null
+        marqueeState.current = null
+      }
     }
   }, [editor, handleDragMove, handleDragEnd])
 
-  // Mousedown: start pan or node drag, attach document listeners
   const handleMouseDown = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
+      if (e.button !== 0) return
       const target = e.target as HTMLElement
       const nodeEl = target.closest('[data-node-id]')
       const vp = viewportRef.current
       const currentDoc = docRef.current
 
-      // P1 r2: If clicking inside an actively edited node, let TipTap
-      // handle native focus/caret — don't preventDefault or start drag.
       if (nodeEl) {
         const clickedId = nodeEl.getAttribute('data-node-id')
-        if (clickedId && clickedId === editingNodeIdRef.current) {
-          return
-        }
+        if (clickedId && clickedId === editingNodeIdRef.current) return
       }
 
-      // B3 (MML-B-0011): If editing a different node, exit edit mode first
-      // (click-away). This persists content before starting drag/pan.
-      // After calling the exit function, verify editingNodeId was actually
-      // cleared — the exit function may be stale (persistedRef already true
-      // from a previous node) or the editing component may not have mounted
-      // yet. Force-clear to prevent stuck editingNodeId.
       if (editingNodeIdRef.current) {
         const exitFn = exitEditModeRef.current
         if (exitFn) exitFn()
-        if (editor.getState().editingNodeId !== null) {
-          editor.stopEditing()
-        }
+        if (editor.getState().editingNodeId !== null) editor.stopEditing()
       }
 
-      // F1: Prevent default to stop native text selection and drag-and-drop
-      // that would suppress mousemove events in real browsers.
       e.preventDefault()
-      // P2: Explicitly focus canvas since preventDefault blocks native focus
       containerRef.current?.focus()
 
       if (nodeEl) {
         const nodeId = nodeEl.getAttribute('data-node-id')
-        if (nodeId) {
-          const node = currentDoc.nodes[nodeId]
-          if (node && node.position) {
-            const rect = containerRef.current!.getBoundingClientRect()
-            const screenX = e.clientX - rect.left
-            const screenY = e.clientY - rect.top
-            const docX = (screenX - vp.x) / vp.zoom
-            const docY = (screenY - vp.y) / vp.zoom
-            dragState.current = {
-              nodeId,
-              offsetX: docX - node.position.x,
-              offsetY: docY - node.position.y,
-            }
-            document.addEventListener('mousemove', handleDragMove)
-            document.addEventListener('mouseup', handleDragEnd)
-            return
+        const node = nodeId ? currentDoc.nodes[nodeId] : undefined
+        if (nodeId && node) {
+          const currentSelection = editor.getState().selectedNodeIds
+          const nodeIds = currentSelection.includes(nodeId)
+            ? currentSelection
+            : [nodeId]
+          const startPositions = nodeIds.flatMap((selectedId) => {
+            const selectedNode = currentDoc.nodes[selectedId]
+            if (!selectedNode) return []
+            const position = selectedNode.position ?? { x: 0, y: 0 }
+            return [{ nodeId: selectedId, position: { ...position } }]
+          })
+          dragState.current = {
+            startClientX: e.clientX,
+            startClientY: e.clientY,
+            zoom: vp.zoom,
+            startPositions,
+            finalPositions: null,
+            previewId: null,
+            activated: false,
           }
+          document.addEventListener('mousemove', handleDragMove)
+          document.addEventListener('mouseup', handleDragEnd)
+          return
         }
       }
 
-      // A1: Background pan on any non-node child element
+      if (!nodeEl && e.shiftKey) {
+        const container = containerRef.current
+        if (!container) return
+        const rect = container.getBoundingClientRect()
+        const candidates: NonNullable<
+          typeof marqueeState.current
+        >['candidates'] = []
+        const measures = editor.getNodeMeasures()
+        const walk = (nodeId: string): void => {
+          const node = currentDoc.nodes[nodeId]
+          if (!node) return
+          const position = node.position ?? { x: 0, y: 0 }
+          const measure = measures[nodeId] ?? { width: 120, height: 40 }
+          candidates.push({
+            nodeId,
+            left: position.x,
+            top: position.y,
+            right: position.x + measure.width,
+            bottom: position.y + measure.height,
+          })
+          if (node.collapsed) return
+          for (const childId of node.childOrder) walk(childId)
+        }
+        walk(currentDoc.rootId)
+        marqueeState.current = {
+          startLocalX: e.clientX - rect.left,
+          startLocalY: e.clientY - rect.top,
+          viewport: { ...vp },
+          candidates,
+          hitIds: [],
+          activated: false,
+        }
+        document.addEventListener('mousemove', handleDragMove)
+        document.addEventListener('mouseup', handleDragEnd)
+        return
+      }
+
       if (!nodeEl) {
         panState.current = {
           startX: e.clientX,
@@ -424,7 +652,7 @@ function CanvasViewComponent({
   return (
     <div
       ref={containerRef}
-      className="mml-canvas"
+      className={`mml-canvas ${marqueeRect ? 'mml-canvas--marquee' : ''}`}
       role="application"
       aria-label="Mindmap canvas"
       tabIndex={0}
@@ -436,6 +664,13 @@ function CanvasViewComponent({
         e.stopPropagation()
       }}
     >
+      {marqueeRect && (
+        <div
+          className="mml-selection-marquee"
+          style={marqueeRect}
+          aria-hidden="true"
+        />
+      )}
       <div
         className="mml-canvas-viewport mml-canvas-pan-target"
         style={{
@@ -476,8 +711,8 @@ function CanvasViewComponent({
               childMeasure={measures[edge.childId] ?? null}
               layoutMode={layoutMode}
               isSelected={
-                edge.childId === selectedNodeId ||
-                edge.parentId === selectedNodeId
+                renderedSelectedIdSet.has(edge.childId) ||
+                renderedSelectedIdSet.has(edge.parentId)
               }
             />
           ))}
@@ -493,7 +728,7 @@ function CanvasViewComponent({
               key={node.id}
               node={node}
               editor={editor}
-              isSelected={node.id === selectedNodeId}
+              isSelected={renderedSelectedIdSet.has(node.id)}
               isEditing={node.id === editingNodeId}
               tiptapExtensions={tiptapExtensions}
               customNodeRenderer={customNodeRenderer}

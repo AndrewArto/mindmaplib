@@ -316,6 +316,14 @@ screenY = docY * viewport.zoom + viewport.y
 `viewport.x` and `viewport.y` are pan offsets in screen pixels. `viewport.zoom`
 is the scale factor.
 
+### Marquee multi-selection
+
+Shift + left drag on empty canvas draws a screen-space selection rectangle.
+Any visible node whose document-space bounds intersect the rectangle is selected.
+Ordinary left drag on empty canvas remains pan; right mouse interaction is not
+claimed by the adapter. Dragging any selected node moves the full selection by a
+shared document-space delta and commits one atomic undoable transaction.
+
 ### Pan
 
 Drag on the canvas background (not on a node) pans the viewport. The handler

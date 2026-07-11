@@ -7,6 +7,8 @@
   --mml-accent: #3b82f6;
   --mml-drop-bg: rgba(59, 130, 246, 0.08);
   --mml-grid-color: #e5e5e5;
+  --mml-marquee-border: #3b82f6;
+  --mml-marquee-bg: rgba(59, 130, 246, 0.12);
   --mml-node-bg: #ffffff;
   --mml-node-border: #d0d0d0;
   --mml-node-selected-border: #3b82f6;
@@ -48,6 +50,20 @@
 
 .mml-canvas:active {
   cursor: grabbing;
+}
+
+.mml-canvas--marquee,
+.mml-canvas.mml-canvas--marquee:active {
+  cursor: crosshair;
+}
+
+.mml-selection-marquee {
+  position: absolute;
+  pointer-events: none;
+  box-sizing: border-box;
+  z-index: 10;
+  border: 1px solid var(--mml-marquee-border);
+  background: var(--mml-marquee-bg);
 }
 
 .mml-canvas-viewport {
