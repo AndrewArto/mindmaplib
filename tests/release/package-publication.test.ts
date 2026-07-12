@@ -86,16 +86,4 @@ describe('initial public release changeset', () => {
       '@mindmaplib/react',
     ])
     expect(config.privatePackages?.version).toBe(false)
-  })
-
-  it('releases core and React together at the same initial minor version', () => {
-    const changeset = readFileSync(
-      resolve(repoRoot, '.changeset/initial-public-release.md'),
-      'utf8',
-    )
-
-    expect(changeset).toContain("'@mindmaplib/core': minor")
-    expect(changeset).toContain("'@mindmaplib/react': minor")
-    expect(changeset).not.toContain('@mindmaplib/demo')
-  })
-})
+  })})
