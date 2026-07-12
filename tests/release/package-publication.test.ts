@@ -86,4 +86,5 @@ describe('initial public release changeset', () => {
       '@mindmaplib/react',
     ])
     expect(config.privatePackages?.version).toBe(false)
-  })})
+  })
+})
