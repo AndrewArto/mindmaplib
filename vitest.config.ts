@@ -43,6 +43,13 @@ export default defineConfig({
           include: ['demo/tests/**/*.test.{ts,tsx}'],
         },
       },
+      {
+        // Repository release and package metadata tests: Node environment
+        test: {
+          name: 'release',
+          include: ['tests/release/**/*.test.ts'],
+        },
+      },
     ],
   },
 })

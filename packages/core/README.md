@@ -1,10 +1,8 @@
 # @mindmaplib/core
 
-Framework-agnostic mindmap engine: document model, transactions, undo/redo,
-layout, serialization, and storage interface.
+Framework-agnostic TypeScript mind map engine: document model, transactions, undo and redo, layout, serialization, selection, and storage interface.
 
-Part of [mindmaplib](../../README.md) — an embeddable rich-text mindmap and
-outline editor for SaaS products. MIT licensed.
+Part of [mindmaplib](https://github.com/AndrewArto/mindmaplib), an embeddable rich-text mind map and outline editor for web applications. MIT licensed.
 
 ## Install
 
@@ -12,52 +10,52 @@ outline editor for SaaS products. MIT licensed.
 pnpm add @mindmaplib/core
 ```
 
+Applications that need the ready-made React UI should install both packages:
+
+```bash
+pnpm add @mindmaplib/core @mindmaplib/react
+```
+
 ## Quick start
 
 ```typescript
-import { createDoc, MindmapEditor } from '@mindmaplib/core'
+import { createDoc, MindmapEditor, serialize } from '@mindmaplib/core'
 
 const doc = createDoc('My Map')
 const editor = new MindmapEditor(doc)
 
-// Mutate
 const root = editor.getDoc().rootId
 const childId = editor.addChild(root)
 
-// Serialize
-import { serialize } from '@mindmaplib/core'
-const json = serialize(editor.getDoc())
-
-// Layout
 editor.setLayout('tree-horizontal')
-
-// Multi-select and move nodes in one undoable transaction
 editor.setSelection([root, childId])
 editor.commitPositions([
   { nodeId: root, position: { x: 100, y: 80 } },
   { nodeId: childId, position: { x: 300, y: 80 } },
 ])
 
-// Explicit toolbar reflow: discard positions previously set by node dragging
-editor.setLayout('tree-vertical', { resetManualPositions: true })
+const json = serialize(editor.getDoc())
 
-// Undo/redo
 editor.undo()
 editor.redo()
 ```
 
+To discard positions previously set by manual node dragging before an automatic reflow:
+
+```typescript
+editor.setLayout('tree-vertical', { resetManualPositions: true })
+```
+
 ## Architecture
 
-- **Document model**: immutable `MindmapDoc` — flat node map, tree emerges
-  from `parentId` links. One root, no orphans.
-- **Mutations**: transactional. Every change flows through `Transaction.apply`,
-  producing a new `MindmapDoc`. Undo/redo is an in-memory ring buffer.
-- **Layout**: `d3-hierarchy` computes positions for auto-layout modes.
-- **Storage**: library exports `MindmapStore` interface. Host implements it
-  against any backend. In-memory default ships with core.
+- Document model: immutable `MindmapDoc` with a flat node map and explicit child order.
+- Mutations: transactional operations with an in-memory undo and redo history.
+- Layout: tree and radial layouts computed with `d3-hierarchy`.
+- Selection: ordered multi-selection and atomic position transactions.
+- Storage: a host-implemented `MindmapStore` interface, with an in-memory default.
+- Runtime: no React or DOM dependencies.
 
-See [MML-B-0001 Core Engine Spec](../../docs/specs/MML-B-0001_CORE_ENGINE_SPEC.md)
-for full architecture, data model, and API surface.
+See the [repository](https://github.com/AndrewArto/mindmaplib) for specifications, API source, tests, and the React adapter.
 
 ## License
 
