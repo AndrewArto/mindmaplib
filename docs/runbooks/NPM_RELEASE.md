@@ -20,7 +20,7 @@ The React package must declare `@mindmaplib/core` as `^0.1.0` in its packed peer
 5. Add the token to the GitHub repository:
 
 ```bash
-gh secret set NPM_TOKEN -R AndrewArto/mindmaplib
+gh secret set NPM -R AndrewArto/mindmaplib
 ```
 
 Confirm that GitHub knows the secret name:
@@ -98,4 +98,4 @@ Configure npm Trusted Publishing for both packages using:
 - Workflow: `.github/workflows/release.yml`
 - Environment: leave empty unless the workflow later adopts one
 
-After Trusted Publishing is verified with a later release, remove the long-lived `NPM_TOKEN` secret and update the workflow to use only OIDC. Initial package creation still requires an authenticated publisher that owns the `mindmaplib` scope.
+After Trusted Publishing is verified with a later release, remove the long-lived `NPM` secret and update the workflow to use only OIDC. Initial package creation still requires an authenticated publisher that owns the `mindmaplib` scope.
