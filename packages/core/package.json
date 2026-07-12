@@ -1,6 +1,6 @@
 {
   "name": "@mindmaplib/core",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Framework-agnostic mindmap engine: document model, transactions, layout, serialization, and storage.",
   "license": "MIT",
   "type": "module",
