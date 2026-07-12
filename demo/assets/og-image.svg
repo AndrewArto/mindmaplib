@@ -1,0 +1,129 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title description">
+  <title id="title">mindmaplib social preview</title>
+  <desc id="description">Embeddable mind maps for web apps, with a framework-agnostic core and React adapter.</desc>
+  <defs>
+    <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
+      <circle cx="1" cy="1" r="1" fill="#21426f" opacity="0.12" />
+    </pattern>
+    <filter id="card-shadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#16181d" flood-opacity="0.12" />
+    </filter>
+    <clipPath id="canvas-clip">
+      <rect x="614" y="134" width="506" height="398" rx="0" />
+    </clipPath>
+  </defs>
+
+  <rect width="1200" height="630" fill="#f6f4ef" />
+  <circle cx="1130" cy="-10" r="330" fill="#21426f" opacity="0.035" />
+  <circle cx="450" cy="690" r="300" fill="#355585" opacity="0.025" />
+
+  <g transform="translate(76 64)">
+    <g aria-label="mindmaplib logo">
+      <line x1="6" y1="6" x2="24" y2="6" stroke="#21426f" stroke-width="1.5" opacity="0.45" />
+      <line x1="6" y1="6" x2="15" y2="24" stroke="#21426f" stroke-width="1.5" opacity="0.45" />
+      <line x1="24" y1="6" x2="15" y2="24" stroke="#21426f" stroke-width="1.5" opacity="0.45" />
+      <circle cx="6" cy="6" r="4" fill="#21426f" />
+      <circle cx="24" cy="6" r="4" fill="#355585" />
+      <circle cx="15" cy="24" r="4" fill="#21426f" />
+    </g>
+    <text x="42" y="22" fill="#16181d" font-family="Inter, Arial, sans-serif" font-size="24" font-weight="600" letter-spacing="-0.5">mindmaplib</text>
+    <rect x="181" y="3" width="58" height="24" rx="5" fill="#21426f" opacity="0.1" />
+    <text x="210" y="20" text-anchor="middle" fill="#21426f" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="700" letter-spacing="1.4">DEMO</text>
+  </g>
+
+  <g transform="translate(76 160)">
+    <text fill="#16181d" font-family="Newsreader, Georgia, serif" font-size="64" font-weight="500" letter-spacing="-2.2">
+      <tspan x="0" y="0">Embeddable</tspan>
+      <tspan x="0" y="68">mind maps</tspan>
+      <tspan x="0" y="136">for web apps.</tspan>
+    </text>
+    <text x="0" y="190" fill="#4c4f57" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="400">
+      <tspan x="0" dy="0">A framework-agnostic TypeScript core</tspan>
+      <tspan x="0" dy="31">with a production-ready React adapter.</tspan>
+    </text>
+
+    <g transform="translate(0 270)">
+      <rect width="150" height="38" rx="8" fill="#21426f" />
+      <text x="75" y="25" text-anchor="middle" fill="#fbfaf7" font-family="Inter, Arial, sans-serif" font-size="14" font-weight="600">Open source · MIT</text>
+      <text x="0" y="76" fill="#74767e" font-family="Inter, Arial, sans-serif" font-size="15">mapdemo.tripleadigital.io</text>
+    </g>
+  </g>
+
+  <g filter="url(#card-shadow)">
+    <rect x="590" y="76" width="554" height="480" rx="18" fill="#ffffff" stroke="#d6d1c5" />
+  </g>
+
+  <g>
+    <path d="M608 76h518a18 18 0 0 1 18 18v40H590V94a18 18 0 0 1 18-18Z" fill="#fbfaf7" />
+    <line x1="590" y1="134" x2="1144" y2="134" stroke="#e6e2d9" />
+    <g transform="translate(614 98)">
+      <line x1="4" y1="4" x2="14" y2="4" stroke="#21426f" stroke-width="1" opacity="0.45" />
+      <line x1="4" y1="4" x2="9" y2="14" stroke="#21426f" stroke-width="1" opacity="0.45" />
+      <line x1="14" y1="4" x2="9" y2="14" stroke="#21426f" stroke-width="1" opacity="0.45" />
+      <circle cx="4" cy="4" r="2.5" fill="#21426f" />
+      <circle cx="14" cy="4" r="2.5" fill="#355585" />
+      <circle cx="9" cy="14" r="2.5" fill="#21426f" />
+      <text x="25" y="12" fill="#16181d" font-family="Inter, Arial, sans-serif" font-size="14" font-weight="600">Product planning</text>
+    </g>
+    <g transform="translate(1008 94)">
+      <rect width="108" height="27" rx="7" fill="#21426f" />
+      <text x="54" y="18" text-anchor="middle" fill="#ffffff" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="600">New map</text>
+    </g>
+  </g>
+
+  <g clip-path="url(#canvas-clip)">
+    <rect x="590" y="134" width="554" height="422" fill="#f1eee6" />
+    <rect x="590" y="134" width="554" height="422" fill="url(#dots)" />
+
+    <g fill="none" stroke="#21426f" stroke-width="2" stroke-opacity="0.38">
+      <path d="M834 333 C882 333 888 231 930 231" />
+      <path d="M834 333 C882 333 888 304 930 304" />
+      <path d="M834 333 C882 333 888 377 930 377" />
+      <path d="M834 333 C882 333 888 450 930 450" />
+      <path d="M1054 231 C1074 231 1074 198 1090 198" />
+      <path d="M1054 231 C1074 231 1074 254 1090 254" />
+    </g>
+
+    <g font-family="Inter, Arial, sans-serif" font-size="13" fill="#16181d">
+      <g>
+        <rect x="688" y="302" width="146" height="62" rx="10" fill="#ffffff" stroke="#21426f" stroke-width="2.5" />
+        <text x="761" y="328" text-anchor="middle" font-size="14" font-weight="600">Your product</text>
+        <text x="761" y="349" text-anchor="middle" fill="#74767e" font-size="11">embedded editor</text>
+      </g>
+
+      <g>
+        <rect x="930" y="207" width="124" height="48" rx="9" fill="#ffffff" stroke="#d6d1c5" />
+        <text x="992" y="236" text-anchor="middle" font-weight="600">Planning</text>
+      </g>
+      <g>
+        <rect x="930" y="280" width="124" height="48" rx="9" fill="#ffffff" stroke="#21426f" stroke-width="2" />
+        <text x="992" y="309" text-anchor="middle" font-weight="600">Research</text>
+      </g>
+      <g>
+        <rect x="930" y="353" width="124" height="48" rx="9" fill="#ffffff" stroke="#21426f" stroke-width="2" />
+        <text x="992" y="382" text-anchor="middle" font-weight="600">Workflows</text>
+      </g>
+      <g>
+        <rect x="930" y="426" width="124" height="48" rx="9" fill="#ffffff" stroke="#21426f" stroke-width="2" />
+        <text x="992" y="455" text-anchor="middle" font-weight="600">Decisions</text>
+      </g>
+
+      <g>
+        <rect x="1090" y="178" width="102" height="40" rx="8" fill="#ffffff" stroke="#d6d1c5" />
+        <text x="1141" y="203" text-anchor="middle">Roadmap</text>
+      </g>
+      <g>
+        <rect x="1090" y="234" width="102" height="40" rx="8" fill="#ffffff" stroke="#d6d1c5" />
+        <text x="1141" y="259" text-anchor="middle">Launch</text>
+      </g>
+    </g>
+
+    <rect x="910" y="264" width="164" height="224" rx="4" fill="#21426f" fill-opacity="0.055" stroke="#21426f" stroke-width="1.5" stroke-dasharray="7 6" />
+    <g transform="translate(920 498)">
+      <rect width="142" height="25" rx="5" fill="#21426f" />
+      <text x="71" y="17" text-anchor="middle" fill="#ffffff" font-family="Inter, Arial, sans-serif" font-size="10" font-weight="600">3 nodes selected</text>
+    </g>
+  </g>
+
+  <text x="1128" y="594" text-anchor="end" fill="#9b9da4" font-family="Inter, Arial, sans-serif" font-size="12" letter-spacing="0.5">BY TRIPLEA DIGITAL</text>
+</svg>
