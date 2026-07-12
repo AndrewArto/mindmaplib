@@ -1,7 +1,7 @@
 {
   "name": "@mindmaplib/react",
   "version": "0.0.0",
-  "description": "React adapter for mindmaplib — embeddable mindmap editor",
+  "description": "React adapter for mindmaplib: embeddable canvas and outline editor",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
@@ -19,13 +19,39 @@
     "README.md",
     "LICENSE"
   ],
+  "sideEffects": [
+    "./dist/styles.css"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AndrewArto/mindmaplib.git",
+    "directory": "packages/react"
+  },
+  "homepage": "https://github.com/AndrewArto/mindmaplib/tree/main/packages/react#readme",
+  "bugs": {
+    "url": "https://github.com/AndrewArto/mindmaplib/issues"
+  },
+  "keywords": [
+    "mindmap",
+    "mind-map",
+    "react",
+    "canvas",
+    "outline",
+    "rich-text",
+    "editor",
+    "visualization"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
   "peerDependencies": {
-    "@mindmaplib/core": "workspace:*",
+    "@mindmaplib/core": "^0.1.0",
     "react": "^18.3.0 || ^19.0.0",
     "react-dom": "^18.3.0 || ^19.0.0"
   },

@@ -1,7 +1,7 @@
 {
   "name": "@mindmaplib/core",
   "version": "0.0.0",
-  "description": "Framework-agnostic mindmap engine: document model, transactions, layout, serialization.",
+  "description": "Framework-agnostic mindmap engine: document model, transactions, layout, serialization, and storage.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
@@ -18,6 +18,29 @@
     "README.md",
     "LICENSE"
   ],
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AndrewArto/mindmaplib.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://github.com/AndrewArto/mindmaplib/tree/main/packages/core#readme",
+  "bugs": {
+    "url": "https://github.com/AndrewArto/mindmaplib/issues"
+  },
+  "keywords": [
+    "mindmap",
+    "mind-map",
+    "diagram",
+    "tree-layout",
+    "typescript",
+    "editor",
+    "visualization"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit",

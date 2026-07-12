@@ -159,9 +159,11 @@ check(
   reactRuntimeCoreDependencies.length === 0,
   '@mindmaplib/react must keep Core in peerDependencies, not runtime dependencies',
 )
+const reactCorePeerRange = react.peerDependencies?.['@mindmaplib/core']
 check(
-  react.peerDependencies?.['@mindmaplib/core'] === 'workspace:*',
-  '@mindmaplib/react must declare @mindmaplib/core as a workspace peer dependency',
+  typeof reactCorePeerRange === 'string' &&
+    /^\^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(reactCorePeerRange),
+  '@mindmaplib/react must declare @mindmaplib/core as a caret semver peer dependency',
 )
 check(
   react.devDependencies?.['@mindmaplib/core'] === 'workspace:*',
