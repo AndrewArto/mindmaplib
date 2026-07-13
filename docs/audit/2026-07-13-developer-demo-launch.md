@@ -2,7 +2,7 @@
 
 Date: 2026-07-13
 Agent: Stevens
-Commit(s): this local feature commit; final PR commit identity is recorded after an authorized push.
+Commit(s): `55c9841` (implementation); this packet is finalized in a follow-up documentation commit on PR #25.
 Request/issue: prepare the mindmaplib demo for developer-community review without publishing or deploying it.
 Governing spec: MML-U-0001.
 
@@ -148,40 +148,49 @@ Governing spec: MML-U-0001.
   - Added tracked and untracked lines contained no hardcoded secret, shell injection, eval/exec, unsafe deserialization, or SQL string-format finding.
 - Commands not run and why:
   - `pnpm ci` is not a package-script invocation in pnpm 10.30.0 and returned `ERR_PNPM_CI_NOT_IMPLEMENTED`; the repository-defined gate is `pnpm run ci`.
-  - No npm publication or Cloudflare deployment was run because the request explicitly prohibited both.
+  - No npm publication, merge, or production deployment was run. The later-authorized branch push produced only a Cloudflare Pages preview.
 
 ## CI
 
 - Baseline main workflow:
   - https://github.com/AndrewArto/mindmaplib/actions/runs/29202697526
   - Result: success before the feature branch was created.
-- Feature workflow/run link: not available.
-- Feature CI result: not run.
-- Reason:
-  - The original task explicitly prohibited push, publication, and deployment. A GitHub PR and feature CI require a branch push and may also trigger a Cloudflare Pages preview.
-- Local substitute:
-  - Full local gate, coverage, build, Playwright, security scan, and boundary checks all passed under the required Node version.
-- Completion status:
-  - The local change is verified but does not satisfy the runbook's PR-CI Definition of Done until push/PR execution is separately authorized.
+- Pull request:
+  - https://github.com/AndrewArto/mindmaplib/pull/25
+- Feature workflow:
+  - https://github.com/AndrewArto/mindmaplib/actions/runs/29235700379
+  - Head reviewed: `55c9841c10c661810613a53091b0d5f4e008e9d7`.
+  - `format / lint / typecheck / test / boundaries`: passed in 1m24s.
+  - `Playwright navigation E2E`: passed in 57s.
+  - Coverage threshold and production build ran inside the successful CI job.
+- Cloudflare Pages preview:
+  - Check passed for preview deployment `d42cd270-1628-47c5-be0b-650719663fe2`.
+  - Preview was authorized after the original no-push constraint was clarified.
+- Result:
+  - All required PR checks passed before the mandatory post-CI reviews.
 
 ## Codex Review
 
-- Sequence note:
-  - Because no PR was allowed, reviews used `codex review --uncommitted`; they are not substitutes for the required post-CI `codex review --base origin/main` sequence on a PR.
+### Pre-PR remediation
+
+- An uncommitted review found one accessibility issue: the example disclosure's visible action and accessible name diverged.
+- Independent review found low D1-disclosure contrast and a hidden empty live region.
+- A later review found that a pre-write macrotask could consume Clipboard user activation.
+- Every finding was fixed with executable red/green regression evidence before commit.
+- Final local review after remediation reported zero actionable findings.
+
+### Mandatory post-CI rounds
+
+- Command for both rounds:
+  - `codex review --base origin/main`
 - Round 1:
-  - 0 BLOCKER, 1 MAJOR-equivalent accessibility finding, 0 MINOR, 0 NIT.
-  - Resolution: synchronized the example-toggle accessible name with expanded state and added regression coverage.
+  - 0 BLOCKER, 0 MAJOR, 0 MINOR, 0 NIT.
+  - Result: no introduced correctness or release-blocking issues.
 - Round 2:
   - 0 BLOCKER, 0 MAJOR, 0 MINOR, 0 NIT.
-- Additional independent review:
-  - Found low-contrast D1 disclosure text and a hidden empty live region; both were fixed with red/green browser coverage.
-  - Follow-up independent review passed with no security or logic findings.
-- Subsequent Codex review:
-  - Found 1 MAJOR-equivalent browser-compatibility issue: the macrotask used to reset the live region could consume transient user activation before Clipboard API invocation.
-  - Resolution: added a red/green synchronous-activation regression and removed the pre-write macrotask.
-- Final Codex review:
-  - 0 BLOCKER, 0 MAJOR, 0 MINOR, 0 NIT after Clipboard remediation.
-  - Result: no discrete correctness, security, or maintainability findings.
+  - Result: no discrete correctness, security, or maintainability issues; TipTap defaults, demo additions, sample changes, and release metadata were consistent.
+- Resolution:
+  - No post-CI code change was required.
 
 ## Changeset
 
@@ -201,17 +210,15 @@ The first completion report was premature under Section 9 of the runbook.
 - Impact analysis not recorded before implementation: the complete public/exported-symbol and caller analysis is now recorded above. This is a retrospective correction and cannot rewrite the original sequence.
 - TDD evidence not persisted: red/green commands and real failure/pass summaries are now recorded above; the accessible-name regression received an explicit mutation replay proving its test fails on the defect.
 - Evidence packet absent: corrected by this document.
-- Review timing was wrong: uncommitted reviews happened before feature PR CI. This remains explicitly non-compliant until a push and PR are authorized.
-- Staged-file and commit discipline were not completed before the initial report. They must be completed after final verification; no unrelated file may be staged.
-- The final response must not call the change fully done while feature CI is absent.
+- Review timing was wrong: the initial reviews happened before feature PR CI. Authorization was obtained, PR #25 was opened, all checks passed, and two clean `--base origin/main` rounds were then completed.
+- Staged-file and commit discipline were not completed before the initial report. The exact 18-file scope was subsequently staged, checked, security-scanned, and committed without unrelated files.
+- The corrected final response may call the reviewed PR ready, but must state that merge, publication, and production deployment remain intentionally unperformed.
 
 ## Follow-Ups
 
 - Remaining risks:
-  - GitHub feature CI has not run.
-  - Cloudflare preview behavior cannot be checked without a permitted branch push.
   - Vite still emits the existing chunk-size warning for the 734.66 kB minified demo bundle.
   - The existing EdgeView JSDOM test emits a React warning for rendering an isolated SVG path; browser runtime remains clean.
 - Deferred work:
-  - Push branch, open PR, wait for GitHub CI, then repeat two Codex review rounds against `origin/main` if authorization is given.
-  - Do not merge, publish, or deploy without separate instruction.
+  - Merge PR #25 only after explicit instruction.
+  - Do not publish or perform a production deployment without separate instruction.
