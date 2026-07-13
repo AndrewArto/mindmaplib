@@ -51,6 +51,66 @@ function finish(editor: MindmapEditor): MindmapDoc {
 }
 
 export function createSampleDoc(): MindmapDoc {
+  const doc = createDoc('mindmaplib architecture')
+  const editor = new MindmapEditor(doc)
+  const rootId = doc.rootId
+
+  editor.updateContent(
+    rootId,
+    rich(bold('mindmaplib'), txt(' '), italic('embeddable editor')),
+  )
+
+  const core = editor.addChild(rootId, {
+    content: rich(bold('Core engine')),
+  })
+  editor.addChild(core, {
+    content: rich(bold('Immutable'), txt(' document')),
+  })
+  editor.addChild(core, {
+    content: rich(txt('Transactions and '), bold('undo/redo')),
+  })
+  editor.addChild(core, { content: rich(txt('Serialization')) })
+  editor.addChild(core, {
+    content: rich(txt('Storage interface: '), code('MindmapStore')),
+  })
+
+  const react = editor.addChild(rootId, {
+    content: rich(
+      bold('React adapter'),
+      txt(' '),
+      link(
+        '@mindmaplib/react',
+        'https://www.npmjs.com/package/@mindmaplib/react',
+      ),
+    ),
+  })
+  editor.addChild(react, { content: rich(txt('Canvas')) })
+  editor.addChild(react, { content: rich(txt('Synchronized outline')) })
+  editor.addChild(react, {
+    content: rich(bold('Rich-text'), txt(' nodes')),
+  })
+  editor.addChild(react, { content: rich(txt('Keyboard navigation')) })
+
+  const layouts = editor.addChild(rootId, {
+    content: rich(bold('Layouts')),
+  })
+  editor.addChild(layouts, { content: rich(txt('Horizontal tree')) })
+  editor.addChild(layouts, { content: rich(txt('Vertical tree')) })
+  editor.addChild(layouts, { content: rich(txt('Radial')) })
+
+  const integration = editor.addChild(rootId, {
+    content: rich(bold('Integration')),
+  })
+  editor.addChild(integration, {
+    content: rich(txt('Host-owned persistence')),
+  })
+  editor.addChild(integration, { content: rich(txt('Custom controls')) })
+  editor.addChild(integration, { content: rich(txt('Import and export')) })
+
+  return finish(editor)
+}
+
+export function createTripleADigitalSampleDoc(): MindmapDoc {
   const doc = createDoc('TripleA Digital enablement map')
   const editor = new MindmapEditor(doc)
   const rootId = doc.rootId
@@ -180,6 +240,7 @@ export function createResearchSampleDoc(): MindmapDoc {
 export function createSampleDocuments(): MindmapDoc[] {
   return [
     createSampleDoc(),
+    createTripleADigitalSampleDoc(),
     createProductLaunchSampleDoc(),
     createResearchSampleDoc(),
   ]

@@ -35,6 +35,24 @@ type SaveState = 'idle' | 'saving' | 'saved' | 'error' | 'conflict'
 
 const layouts: LayoutMode[] = ['tree-horizontal', 'tree-vertical', 'radial']
 
+const INSTALL_COMMAND = 'npm install @mindmaplib/core @mindmaplib/react'
+const REACT_EXAMPLE = `import { useState } from 'react'
+import { createDoc, MindmapEditor } from '@mindmaplib/core'
+import { Mindmap } from '@mindmaplib/react'
+import '@mindmaplib/react/styles.css'
+
+export default function App() {
+  const [editor] = useState(() => new MindmapEditor(createDoc('My mind map')))
+
+  return (
+    <div style={{ height: '600px' }}>
+      <Mindmap editor={editor} />
+    </div>
+  )
+}`
+
+type CopyStatus = 'idle' | 'success' | 'error'
+
 const FOCUS_STORAGE_PREFIX = 'mindmaplib:last-focused-node:'
 
 type EditorStartupSnapshot = {
@@ -360,6 +378,8 @@ export function App(): React.ReactElement {
   const [theme, setTheme] = useState<ThemeName>('triplea')
   const [showOutline, setShowOutline] = useState(true)
   const [showShortcuts, setShowShortcuts] = useState(false)
+  const [showReactExample, setShowReactExample] = useState(false)
+  const [copyStatus, setCopyStatus] = useState<CopyStatus>('idle')
   const [viewportWidth, setViewportWidth] = useState(getInitialViewportWidth)
   const [layout, setLayout] = useState<LayoutMode>('tree-horizontal')
   const [saveState, setSaveState] = useState<SaveState>('idle')
@@ -1530,6 +1550,20 @@ export function App(): React.ReactElement {
     ],
   )
 
+  const copyInstallCommand = useCallback(async () => {
+    setCopyStatus('idle')
+    if (!navigator.clipboard?.writeText) {
+      setCopyStatus('error')
+      return
+    }
+    try {
+      await navigator.clipboard.writeText(INSTALL_COMMAND)
+      setCopyStatus('success')
+    } catch {
+      setCopyStatus('error')
+    }
+  }, [])
+
   return (
     <div
       className={`demo-shell theme-${theme}`}
@@ -1562,6 +1596,89 @@ export function App(): React.ReactElement {
           <ThemeToggle theme={theme} onChange={setTheme} />
         </div>
       </header>
+
+      <section className="developer-panel" aria-labelledby="developer-heading">
+        <div className="developer-copy">
+          <p className="developer-kicker">One tree. Two editing surfaces.</p>
+          <h1 id="developer-heading">
+            Embeddable rich-text mind maps for React
+          </h1>
+          <p className="developer-summary">
+            Canvas and keyboard-first outline edit the same structured document.
+            You own persistence. MIT licensed.
+          </p>
+        </div>
+
+        <div className="developer-tools">
+          <nav className="developer-links" aria-label="Project links">
+            <a
+              href="https://github.com/AndrewArto/mindmaplib"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              View on GitHub
+            </a>
+            <a
+              href="https://www.npmjs.com/package/@mindmaplib/react"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              View React package
+            </a>
+            <a
+              href="https://www.npmjs.com/package/@mindmaplib/core"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              View core package
+            </a>
+          </nav>
+
+          <div className="developer-install">
+            <code>{INSTALL_COMMAND}</code>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              aria-label="Copy npm install command"
+              onClick={() => void copyInstallCommand()}
+            >
+              Copy install
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost developer-example-toggle"
+              aria-label={
+                showReactExample ? 'Hide React example' : 'View React example'
+              }
+              aria-expanded={showReactExample}
+              aria-controls="react-example-panel"
+              onClick={() => setShowReactExample((value) => !value)}
+            >
+              {showReactExample ? 'Hide React example' : 'View React example'}
+            </button>
+          </div>
+
+          <div className="developer-meta">
+            <span role="status" aria-live="polite">
+              {copyStatus === 'success'
+                ? 'Install command copied.'
+                : copyStatus === 'error'
+                  ? 'Copy failed. Select the command manually.'
+                  : ''}
+            </span>
+            <span>
+              Demo maps are stored anonymously in Cloudflare D1. No account is
+              required.
+            </span>
+          </div>
+        </div>
+
+        {showReactExample && (
+          <pre id="react-example-panel" className="react-example" tabIndex={0}>
+            <code>{REACT_EXAMPLE}</code>
+          </pre>
+        )}
+      </section>
 
       <main
         className="workspace"
