@@ -1,5 +1,11 @@
 # @mindmaplib/react
 
+## 0.1.1
+
+### Patch Changes
+
+- 26de12d: Prevent duplicate TipTap Link extension registration while preserving safe, non-navigating link editing.
+
 ## 0.1.0
 
 ### Minor Changes

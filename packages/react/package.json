@@ -1,6 +1,6 @@
 {
   "name": "@mindmaplib/react",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "React adapter for mindmaplib: embeddable canvas and outline editor",
   "license": "MIT",
   "type": "module",
