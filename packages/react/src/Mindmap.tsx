@@ -5,14 +5,13 @@
 // the keyboard hook and NodeView's TipTap instance.
 
 import { useRef, useEffect, useMemo } from 'react'
-import StarterKit from '@tiptap/starter-kit'
-import Link from '@tiptap/extension-link'
 import type { Extensions } from '@tiptap/core'
 import { CanvasView } from './CanvasView.js'
 import { OutlineView } from './OutlineView.js'
 import { useEditor } from './hooks/useEditor.js'
 import type { MindmapProps } from './types.js'
 import { DEFAULT_OUTLINE_WIDTH } from './types.js'
+import { DEFAULT_TIPTAP_EXTENSIONS } from './tiptapExtensions.js'
 
 function MindmapComponent(props: MindmapProps): React.ReactElement {
   const {
@@ -38,11 +37,10 @@ function MindmapComponent(props: MindmapProps): React.ReactElement {
   const exitEditModeRef = useRef<(() => void) | null>(null)
 
   // Default TipTap extensions
-  const extensions: Extensions = useMemo(() => {
-    return (
-      tiptapExtensions ?? [StarterKit, Link.configure({ openOnClick: false })]
-    )
-  }, [tiptapExtensions])
+  const extensions: Extensions = useMemo(
+    () => tiptapExtensions ?? DEFAULT_TIPTAP_EXTENSIONS,
+    [tiptapExtensions],
+  )
 
   // Subscribe to editor for callback routing
   const state = useEditor(editor)

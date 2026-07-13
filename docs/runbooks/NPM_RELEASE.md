@@ -91,6 +91,12 @@ Run the consumer project's typecheck and production build.
 
 ## After the first release
 
+Remove the one-time Changesets `fixed` group after both packages reach `0.1.0`
+so later package changes are versioned independently. A React-only patch
+changeset must leave `@mindmaplib/core` unchanged; verify this with
+`pnpm changeset status`. The React peer range must continue to accept the
+current core release.
+
 Configure npm Trusted Publishing for both packages using:
 
 - GitHub organization or user: `AndrewArto`

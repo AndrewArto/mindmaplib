@@ -173,6 +173,152 @@ body {
   gap: 6px;
 }
 
+/* ── Developer introduction ────────────────────── */
+
+.developer-panel {
+  flex-shrink: 0;
+  margin: 12px 16px 0;
+  padding: 12px 14px;
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(420px, 1.15fr);
+  gap: 10px 20px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--card) 88%, transparent);
+  box-shadow: var(--shadow);
+}
+
+.developer-copy,
+.developer-tools {
+  min-width: 0;
+}
+
+.developer-kicker {
+  margin: 0 0 3px;
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  line-height: 1.3;
+  text-transform: uppercase;
+}
+
+.developer-copy h1 {
+  margin: 0;
+  color: var(--ink);
+  font-size: clamp(17px, 1.65vw, 21px);
+  font-weight: 650;
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+}
+
+.developer-summary {
+  margin: 5px 0 0;
+  max-width: 680px;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.developer-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.developer-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+}
+
+.developer-links a {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  text-underline-offset: 3px;
+}
+
+.developer-links a:hover {
+  text-decoration: underline;
+}
+
+.developer-links a:focus-visible,
+.developer-install button:focus-visible,
+.react-example:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.developer-install {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.developer-install > code {
+  flex: 1 1 280px;
+  min-width: 0;
+  padding: 7px 9px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+  color: var(--ink);
+  font-family: 'SF Mono', 'Fira Code', ui-monospace, monospace;
+  font-size: 11px;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.developer-install .btn {
+  height: 30px;
+  padding-inline: 9px;
+  font-size: 12px;
+}
+
+.developer-example-toggle {
+  color: var(--accent);
+}
+
+.developer-meta {
+  min-height: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.developer-meta [role='status'] {
+  min-width: 1px;
+  min-height: 1em;
+  display: inline-block;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.react-example {
+  grid-column: 1 / -1;
+  width: 100%;
+  max-height: 220px;
+  margin: 0;
+  padding: 12px 14px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--paper-2) 94%, transparent);
+  color: var(--ink);
+  font-family: 'SF Mono', 'Fira Code', ui-monospace, monospace;
+  font-size: 11px;
+  line-height: 1.55;
+  tab-size: 2;
+}
+
 /* ── Button system ─────────────────────────────── */
 
 button,
@@ -761,6 +907,11 @@ button {
 /* ── Responsive ────────────────────────────────── */
 
 @media (max-width: 960px) {
+  .developer-panel {
+    grid-template-columns: 1fr;
+    gap: 9px;
+  }
+
   .topbar {
     height: auto;
     padding: 12px 16px;
@@ -801,6 +952,36 @@ button {
 }
 
 @media (max-width: 480px) {
+  .developer-panel {
+    margin: 10px 10px 0;
+    padding: 10px 11px;
+  }
+
+  .developer-summary {
+    font-size: 11px;
+  }
+
+  .developer-links {
+    gap: 5px 12px;
+  }
+
+  .developer-install {
+    flex-wrap: wrap;
+  }
+
+  .developer-install > code {
+    flex-basis: 100%;
+  }
+
+  .developer-meta {
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .react-example {
+    max-height: 260px;
+  }
+
   .topbar {
     padding: 10px 12px;
     gap: 10px;

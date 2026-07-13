@@ -75,13 +75,13 @@ describe('npm publication metadata', () => {
   })
 })
 
-describe('initial public release changeset', () => {
-  it('keeps the public packages in one fixed version group', () => {
+describe('post-initial-release changesets', () => {
+  it('versions the React adapter independently from core', () => {
     const config = JSON.parse(
       readFileSync(resolve(repoRoot, '.changeset/config.json'), 'utf8'),
     ) as { fixed?: string[][]; privatePackages?: { version?: boolean } }
 
-    expect(config.fixed).toContainEqual([
+    expect(config.fixed).not.toContainEqual([
       '@mindmaplib/core',
       '@mindmaplib/react',
     ])

@@ -78,6 +78,7 @@ afterEach(() => {
   } else {
     Reflect.deleteProperty(window, 'localStorage')
   }
+  Reflect.deleteProperty(navigator, 'clipboard')
   vi.unstubAllGlobals()
 })
 
@@ -128,6 +129,171 @@ function getButton(host: HTMLElement, label: string): HTMLButtonElement {
   return button
 }
 
+describe('App developer introduction', () => {
+  it('identifies the demo as an embeddable React library with real package links', async () => {
+    const host = await renderApp()
+
+    expect(host.querySelector('h1')?.textContent).toBe(
+      'Embeddable rich-text mind maps for React',
+    )
+    expect(host.textContent).toContain(
+      'Canvas and keyboard-first outline edit the same structured document. You own persistence. MIT licensed.',
+    )
+    expect(host.textContent).toContain('One tree. Two editing surfaces.')
+    expect(host.textContent).toContain(
+      'npm install @mindmaplib/core @mindmaplib/react',
+    )
+    expect(host.textContent).toContain(
+      'Demo maps are stored anonymously in Cloudflare D1. No account is required.',
+    )
+
+    const expectedLinks = new Map([
+      ['View on GitHub', 'https://github.com/AndrewArto/mindmaplib'],
+      ['View React package', 'https://www.npmjs.com/package/@mindmaplib/react'],
+      ['View core package', 'https://www.npmjs.com/package/@mindmaplib/core'],
+    ])
+    for (const [label, href] of expectedLinks) {
+      const link = Array.from(host.querySelectorAll('a')).find(
+        (candidate) => candidate.textContent?.trim() === label,
+      )
+      expect(link?.href).toBe(href)
+      expect(link?.target).toBe('_blank')
+      expect(link?.rel).toContain('noreferrer')
+    }
+  })
+
+  it('copies the exact install command and announces success', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    })
+    const host = await renderApp()
+
+    await act(async () => {
+      getButton(host, 'Copy npm install command').click()
+      await Promise.resolve()
+    })
+
+    expect(writeText).toHaveBeenCalledWith(
+      'npm install @mindmaplib/core @mindmaplib/react',
+    )
+    expect(host.querySelector('[role="status"]')?.textContent).toBe(
+      'Install command copied.',
+    )
+  })
+
+  it('starts the clipboard write inside the click activation without yielding', async () => {
+    let resolveCopy: (() => void) | null = null
+    const writeText = vi.fn().mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveCopy = resolve
+        }),
+    )
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    })
+    const host = await renderApp()
+
+    act(() => {
+      getButton(host, 'Copy npm install command').click()
+      expect(writeText).toHaveBeenCalledWith(
+        'npm install @mindmaplib/core @mindmaplib/react',
+      )
+    })
+    await act(async () => {
+      resolveCopy?.()
+      await Promise.resolve()
+    })
+  })
+
+  it('clears the previous copy announcement before announcing a repeated copy', async () => {
+    let resolveSecondCopy: (() => void) | null = null
+    const writeText = vi
+      .fn()
+      .mockResolvedValueOnce(undefined)
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveSecondCopy = resolve
+          }),
+      )
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    })
+    const host = await renderApp()
+    const copyButton = getButton(host, 'Copy npm install command')
+    const status = host.querySelector('[role="status"]')
+
+    await act(async () => {
+      copyButton.click()
+      await new Promise((resolve) => window.setTimeout(resolve, 0))
+    })
+    expect(status?.textContent).toBe('Install command copied.')
+
+    await act(async () => {
+      copyButton.click()
+      await new Promise((resolve) => window.setTimeout(resolve, 0))
+    })
+    expect(status?.textContent).toBe('')
+
+    await act(async () => {
+      resolveSecondCopy?.()
+      await Promise.resolve()
+    })
+    expect(status?.textContent).toBe('Install command copied.')
+  })
+
+  it('announces a recoverable copy error when the Clipboard API fails', async () => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: vi.fn().mockRejectedValue(new Error('permission denied')),
+      },
+    })
+    const host = await renderApp()
+
+    await act(async () => {
+      getButton(host, 'Copy npm install command').click()
+      await Promise.resolve()
+    })
+
+    expect(host.querySelector('[role="status"]')?.textContent).toBe(
+      'Copy failed. Select the command manually.',
+    )
+  })
+
+  it('opens an accessible minimal React example with a stable editor and explicit height', async () => {
+    const host = await renderApp()
+    const toggle = getButton(host, 'View React example')
+
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    expect(host.querySelector('#react-example-panel')).toBeNull()
+
+    await act(async () => toggle.click())
+
+    expect(toggle.getAttribute('aria-expanded')).toBe('true')
+    expect(toggle.getAttribute('aria-label')).toBe('Hide React example')
+    const example = host.querySelector('#react-example-panel')
+    expect(example).toBeTruthy()
+    expect(example?.textContent).toContain("import { useState } from 'react'")
+    expect(example?.textContent).toContain(
+      "import { createDoc, MindmapEditor } from '@mindmaplib/core'",
+    )
+    expect(example?.textContent).toContain(
+      "import { Mindmap } from '@mindmaplib/react'",
+    )
+    expect(example?.textContent).toContain(
+      "import '@mindmaplib/react/styles.css'",
+    )
+    expect(example?.textContent).toContain('useState(() => new MindmapEditor(')
+    expect(example?.textContent).toContain("style={{ height: '600px' }}")
+  })
+})
+
 describe('App D1 fallback behavior', () => {
   it('persists and opens the sample map automatically for a first-time D1 owner', async () => {
     const fetchMock = vi.mocked(fetch)
@@ -151,7 +317,7 @@ describe('App D1 fallback behavior', () => {
           }
           expect(body.bootstrapKind).toBe('first-visit-sample')
           const created = deserialize(body.doc)
-          expect(created.meta.title).toBe('TripleA Digital enablement map')
+          expect(created.meta.title).toBe('mindmaplib architecture')
           createdDocId = created.id
           createdDocJson = body.doc
           return new Response(JSON.stringify({ id: created.id }), {
@@ -181,11 +347,11 @@ describe('App D1 fallback behavior', () => {
 
     await waitForExpectation(() => {
       expect(createdDocId).toBeTruthy()
-      expect(host.textContent).toContain('TripleA Digital enablement map')
+      expect(host.textContent).toContain('mindmaplib architecture')
       expect(host.textContent).not.toContain('No saved maps yet')
       expect(
         host.querySelector('.session-button.active')?.textContent,
-      ).toContain('TripleA Digital enablement map')
+      ).toContain('mindmaplib architecture')
     })
   })
 
@@ -213,7 +379,7 @@ describe('App D1 fallback behavior', () => {
         if (url.endsWith('/api/sessions') && init?.method === 'POST') {
           const body = JSON.parse(String(init.body)) as { doc: string }
           const created = deserialize(body.doc)
-          expect(created.meta.title).toBe('TripleA Digital enablement map')
+          expect(created.meta.title).toBe('mindmaplib architecture')
           createdDocId = created.id
           createdDocJson = body.doc
           return new Response(JSON.stringify({ id: created.id }), {
@@ -258,7 +424,7 @@ describe('App D1 fallback behavior', () => {
       expect(createdDocId).toBeTruthy()
       expect(
         host.querySelector('.session-button.active')?.textContent,
-      ).toContain('TripleA Digital enablement map')
+      ).toContain('mindmaplib architecture')
       expect(host.textContent).toContain('Saved to D1')
     })
   })
@@ -281,7 +447,7 @@ describe('App D1 fallback behavior', () => {
         if (url.endsWith('/api/sessions') && init?.method === 'POST') {
           const body = JSON.parse(String(init.body)) as { doc: string }
           const created = deserialize(body.doc)
-          if (created.meta.title === 'TripleA Digital enablement map') {
+          if (created.meta.title === 'mindmaplib architecture') {
             sampleDocId = created.id
             sampleDocJson = body.doc
             return new Promise<Response>((resolve) => {
@@ -376,7 +542,7 @@ describe('App D1 fallback behavior', () => {
         if (url.endsWith('/api/sessions') && init?.method === 'POST') {
           const body = JSON.parse(String(init.body)) as { doc: string }
           const created = deserialize(body.doc)
-          if (created.meta.title === 'TripleA Digital enablement map') {
+          if (created.meta.title === 'mindmaplib architecture') {
             sampleDocId = created.id
             return new Promise<Response>((resolve) => {
               resolveSampleCreate = () => {
@@ -526,7 +692,7 @@ describe('App D1 fallback behavior', () => {
       expect(createdDocHadCollapsedNode).toBe(true)
       expect(
         host.querySelector('.session-button.active')?.textContent,
-      ).toContain('TripleA Digital enablement map')
+      ).toContain('mindmaplib architecture')
     })
   })
 
@@ -618,7 +784,7 @@ describe('App D1 fallback behavior', () => {
       expect(lastSaved.nodes[lastSaved.rootId]?.collapsed).toBe(false)
       expect(
         host.querySelector('.session-button.active')?.textContent,
-      ).toContain('TripleA Digital enablement map')
+      ).toContain('mindmaplib architecture')
     })
   })
 
@@ -696,7 +862,7 @@ describe('App D1 fallback behavior', () => {
       expect(host.textContent).toContain('Saved to D1')
       expect(
         host.querySelector('.session-button.active')?.textContent,
-      ).toContain('TripleA Digital enablement map')
+      ).toContain('mindmaplib architecture')
     })
   })
   it('does not autoload an existing session over active local editing during startup', async () => {
@@ -760,7 +926,9 @@ describe('App D1 fallback behavior', () => {
         String(input).endsWith(`/api/sessions/${existingDoc.id}`) && !init,
     )
     expect(existingLoads).toHaveLength(0)
-    expect(host.textContent).toContain('TripleA')
+    expect(host.querySelector('.map-title-block strong')?.textContent).toBe(
+      'mindmaplib architecture',
+    )
   })
 
   it('does not let a stale initial list replace a newer manual-create refresh', async () => {
@@ -902,7 +1070,9 @@ describe('App D1 fallback behavior', () => {
       await new Promise((resolve) => window.setTimeout(resolve, 50))
     })
 
-    expect(host.textContent).toContain('TripleA')
+    expect(host.querySelector('.map-title-block strong')?.textContent).toBe(
+      'mindmaplib architecture',
+    )
     expect(host.querySelector('.session-button.active')).toBeNull()
   })
 
@@ -975,7 +1145,9 @@ describe('App D1 fallback behavior', () => {
       await new Promise((resolve) => window.setTimeout(resolve, 50))
     })
 
-    expect(host.textContent).toContain('TripleA')
+    expect(host.querySelector('.map-title-block strong')?.textContent).toBe(
+      'mindmaplib architecture',
+    )
     expect(host.querySelector('.session-button.active')).toBeNull()
 
     await act(async () => {
@@ -1368,7 +1540,7 @@ describe('App D1 fallback behavior', () => {
       requireDocument(bootstrapDoc, 'bootstrapDoc').id,
     )
     expect(host.querySelector('.session-button.active')?.textContent).toContain(
-      'TripleA Digital enablement map',
+      'mindmaplib architecture',
     )
     expect(host.textContent).toContain('Conflict')
     expect(bootstrapSaveCalls).toBe(1)
@@ -4659,7 +4831,7 @@ describe('App D1 fallback behavior', () => {
 
     expect(bootstrapPosts).toBe(1)
     expect(host.querySelector('.session-button.active')?.textContent).toContain(
-      'TripleA Digital enablement map',
+      'mindmaplib architecture',
     )
   })
 
@@ -5175,7 +5347,7 @@ describe('App D1 fallback behavior', () => {
     )
     expect(sampleCreates).toHaveLength(1)
     expect(host.querySelector('.session-button.active')?.textContent).toContain(
-      'TripleA Digital enablement map',
+      'mindmaplib architecture',
     )
   })
 
@@ -5216,7 +5388,9 @@ describe('App D1 fallback behavior', () => {
     )
     expect(postCalls).toHaveLength(1)
     expect(host.textContent).toContain('No saved maps yet')
-    expect(host.textContent).toContain('TripleA')
+    expect(host.querySelector('.map-title-block strong')?.textContent).toBe(
+      'mindmaplib architecture',
+    )
     expect(host.querySelector('.session-button.active')).toBeNull()
   })
 
@@ -5239,7 +5413,9 @@ describe('App D1 fallback behavior', () => {
         String(input).endsWith('/api/sessions') && init?.method === 'POST',
     )
     expect(postCalls).toHaveLength(0)
-    expect(host.textContent).toContain('TripleA')
+    expect(host.querySelector('.map-title-block strong')?.textContent).toBe(
+      'mindmaplib architecture',
+    )
   })
 
   it('keeps an editable local document visible when D1 create is unavailable', async () => {

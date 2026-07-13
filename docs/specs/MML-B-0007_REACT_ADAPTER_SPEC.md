@@ -4,7 +4,7 @@ Status: draft.
 Date: 2026-07-05.
 Owner: Andrew Arto.
 Spec-ID: MML-B-0007.
-Spec-Version: 0.1.0+backlog.0007.
+Spec-Version: 0.1.1+backlog.0007.
 Backlog lane: backlog.
 Depends-on: MML-B-0001, MML-B-0002, MML-B-0003, MML-B-0004, MML-B-0005.
 Supersedes: none.
@@ -70,24 +70,24 @@ accessibility, event API) and defines how they come together in components.
 Extends the stack from MML-B-0001 with adapter-specific runtime dependencies.
 All verified against npm registry on 2026-07-05.
 
-| Layer          | Package                                       | Min Version    | License            | Rationale                                       |
-| -------------- | --------------------------------------------- | -------------- | ------------------ | ----------------------------------------------- |
-| Framework      | react, react-dom                              | ^18.3 \|\| ^19 | MIT                | First integration target is a React app         |
-| Rich text      | @tiptap/core, @tiptap/pm, @tiptap/starter-kit | ^3.0           | MIT                | Headless, framework-agnostic, MIT core          |
-| React binding  | @tiptap/react                                 | ^3.0           | MIT                | EditorContent component for React integration   |
-| Link mark      | @tiptap/extension-link                        | ^3.0           | MIT                | Link not in StarterKit; required for link marks |
-| HTML sanitizer | dompurify                                     | ^3             | MPL-2.0/Apache-2.0 | Sanitize generateHTML output before DOM insert  |
-| Layout math    | d3-hierarchy                                  | ^3.1           | ISC                | Already a core dependency; adapter passes sizes |
+| Layer          | Package                                       | Min Version    | License            | Rationale                                                            |
+| -------------- | --------------------------------------------- | -------------- | ------------------ | -------------------------------------------------------------------- |
+| Framework      | react, react-dom                              | ^18.3 \|\| ^19 | MIT                | First integration target is a React app                              |
+| Rich text      | @tiptap/core, @tiptap/pm, @tiptap/starter-kit | ^3.0           | MIT                | Headless, framework-agnostic, MIT core                               |
+| React binding  | @tiptap/react                                 | ^3.0           | MIT                | EditorContent component for React integration                        |
+| Link mark      | @tiptap/extension-link                        | ^3.0           | MIT                | Explicit configured Link after StarterKit's bundled Link is disabled |
+| HTML sanitizer | dompurify                                     | ^3             | MPL-2.0/Apache-2.0 | Sanitize generateHTML output before DOM insert                       |
+| Layout math    | d3-hierarchy                                  | ^3.1           | ISC                | Already a core dependency; adapter passes sizes                      |
 
 ### License Notes
 
 - TipTap v3 core packages are MIT. TipTap Pro extensions (collaboration cursor,
   etc.) are commercial and MUST NOT be used or listed as dependencies.
-- `@tiptap/starter-kit` bundles the default extensions (paragraph, heading,
-  bold, italic, code, lists) but does NOT include Link. The `link` mark is
-  part of the NodeContent contract (MML-B-0001), so `@tiptap/extension-link`
-  (MIT) is an explicit dependency. The default extension set passed to
-  `generateHTML()` is `[..., Link]`.
+- The current TipTap v3 `@tiptap/starter-kit` includes Link. The `link` mark is
+  part of the NodeContent contract (MML-B-0001), and mindmaplib requires
+  `openOnClick: false`, so the adapter disables StarterKit's bundled Link and
+  registers one explicit `@tiptap/extension-link` instance (MIT). The same
+  duplicate-free extension set is passed to `generateHTML()` and active editors.
 - DOMPurify is MPL-2.0/Apache-2.0 dual-licensed. It is a runtime dependency of
   `@mindmaplib/react` only, not of core. Core remains DOM-free.
 - React is declared as `peerDependencies: ">=18.3 || >=19"`. The demo and dev
@@ -144,7 +144,7 @@ interface MindmapProps {
   gridType?: 'dots' | 'lines' | 'none' // grid style (default: 'dots')
 
   // Rich text
-  tiptapExtensions?: Extensions // override default extension set (default: [StarterKit, Link])
+  tiptapExtensions?: Extensions // default: [StarterKit.configure({ link: false }), Link.configure({ openOnClick: false })]
   // WARNING: custom extensions emitting nodes/marks outside the NodeContent
   // schema (MML-B-0001) will be silently stripped by normalizeContent on
   // edit exit. Only use extensions compatible with the fixed schema:
@@ -472,7 +472,7 @@ return (
 ```
 
 `generateHTML()` is from `@tiptap/core`. The extension list is configurable via
-`MindmapProps.tiptapExtensions`, defaulting to `[..., Link]` (StarterKit plus the Link extension).
+`MindmapProps.tiptapExtensions`, defaulting to StarterKit with its bundled Link disabled plus one explicit Link configured with `openOnClick: false`.
 
 ### Editing Node (Active)
 
@@ -985,7 +985,7 @@ interface MindmapProps {
   gridType?: 'dots' | 'lines' | 'none' // default: 'dots'
 
   // Rich text
-  tiptapExtensions?: Extensions // default: [StarterKit, Link]
+  tiptapExtensions?: Extensions // default: StarterKit (link disabled) + Link (openOnClick false)
   // Schema-constrained: only NodeContent-compatible extensions (see above)
   customNodeRenderer?: CustomNodeRenderer
 
@@ -1266,3 +1266,6 @@ collaboration support (Yjs CRDT layer), the adapter will need:
   surface, rendering pipeline, viewport, node rendering with TipTap, outline
   view, keyboard navigation, node measurement, styling, accessibility, event
   API, implementation outline, and test plan.
+- 0.1.1+backlog.0007: Corrected the TipTap v3 Link contract: disable
+  StarterKit's bundled Link and register one explicit Link with
+  `openOnClick: false`.

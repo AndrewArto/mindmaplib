@@ -1,9 +1,8 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { NodeView } from '../src/NodeView.js'
 import { MindmapEditor, createDoc } from '@mindmaplib/core'
-import StarterKit from '@tiptap/starter-kit'
-import Link from '@tiptap/extension-link'
+import { DEFAULT_TIPTAP_EXTENSIONS } from '../src/tiptapExtensions.js'
 import { createRef } from 'react'
 import type { MindmapNode, NodeContent } from '@mindmaplib/core'
 
@@ -32,7 +31,7 @@ describe('NodeView', () => {
     const editor = new MindmapEditor(doc)
     const exitRef = createRef<(() => void) | null>()
     const node = makeNode()
-    const extensions = [StarterKit, Link.configure({ openOnClick: false })]
+    const extensions = DEFAULT_TIPTAP_EXTENSIONS
     render(
       <NodeView
         node={node}
@@ -51,7 +50,7 @@ describe('NodeView', () => {
     const editor = new MindmapEditor(doc)
     const exitRef = createRef<(() => void) | null>()
     const node = makeNode({ position: { x: 200, y: 300 } })
-    const extensions = [StarterKit, Link.configure({ openOnClick: false })]
+    const extensions = DEFAULT_TIPTAP_EXTENSIONS
     const { container } = render(
       <NodeView
         node={node}
@@ -72,7 +71,7 @@ describe('NodeView', () => {
     const editor = new MindmapEditor(doc)
     const exitRef = createRef<(() => void) | null>()
     const node = makeNode()
-    const extensions = [StarterKit, Link.configure({ openOnClick: false })]
+    const extensions = DEFAULT_TIPTAP_EXTENSIONS
     const { container } = render(
       <NodeView
         node={node}
@@ -91,7 +90,7 @@ describe('NodeView', () => {
     const editor = new MindmapEditor(doc)
     const root = doc.nodes[doc.rootId]
     const exitRef = createRef<(() => void) | null>()
-    const extensions = [StarterKit, Link.configure({ openOnClick: false })]
+    const extensions = DEFAULT_TIPTAP_EXTENSIONS
     const { container } = render(
       <NodeView
         node={root}
@@ -112,7 +111,7 @@ describe('NodeView', () => {
     const editor = new MindmapEditor(doc)
     const exitRef = createRef<(() => void) | null>()
     const node = makeNode({ id: 'custom-id' })
-    const extensions = [StarterKit, Link.configure({ openOnClick: false })]
+    const extensions = DEFAULT_TIPTAP_EXTENSIONS
     const { container } = render(
       <NodeView
         node={node}
@@ -134,7 +133,7 @@ describe('NodeView', () => {
     editor.select(doc.rootId)
     editor.startEditing(doc.rootId)
     const exitRef = createRef<(() => void) | null>()
-    const extensions = [StarterKit, Link.configure({ openOnClick: false })]
+    const extensions = DEFAULT_TIPTAP_EXTENSIONS
     const { container } = render(
       <div className="mml-canvas" tabIndex={0}>
         <NodeView
@@ -176,7 +175,7 @@ describe('NodeView', () => {
     editor.select(doc.rootId)
     editor.startEditing(doc.rootId)
     const exitRef = createRef<(() => void) | null>()
-    const extensions = [StarterKit, Link.configure({ openOnClick: false })]
+    const extensions = DEFAULT_TIPTAP_EXTENSIONS
     const { container } = render(
       <div className="mml-canvas" tabIndex={0}>
         <NodeView
@@ -211,6 +210,84 @@ describe('NodeView', () => {
     })
   })
 
+  it('renders and preserves link content through the default editing lifecycle without duplicate warnings', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const doc = createDoc('Linked root')
+    const editor = new MindmapEditor(doc)
+    const linkContent: NodeContent = {
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            {
+              type: 'text',
+              text: 'mindmaplib',
+              marks: [
+                {
+                  type: 'link',
+                  attrs: { href: 'https://github.com/AndrewArto/mindmaplib' },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    }
+    editor.updateContent(doc.rootId, linkContent)
+    editor.select(doc.rootId)
+    const exitRef = createRef<(() => void) | null>()
+    const { container, rerender } = render(
+      <div className="mml-canvas" tabIndex={0}>
+        <NodeView
+          node={editor.getDoc().nodes[doc.rootId]}
+          editor={editor}
+          isSelected={true}
+          isEditing={false}
+          exitEditModeRef={exitRef}
+        />
+      </div>,
+    )
+
+    const anchorElement = container.querySelector('a')
+    expect(anchorElement?.textContent).toBe('mindmaplib')
+    expect(anchorElement?.getAttribute('href')).toBe(
+      'https://github.com/AndrewArto/mindmaplib',
+    )
+
+    editor.startEditing(doc.rootId)
+    rerender(
+      <div className="mml-canvas" tabIndex={0}>
+        <NodeView
+          node={editor.getDoc().nodes[doc.rootId]}
+          editor={editor}
+          isSelected={true}
+          isEditing={true}
+          exitEditModeRef={exitRef}
+        />
+      </div>,
+    )
+    const editingContent = await waitFor(() => {
+      const element = container.querySelector(
+        '.mml-node-content--editing',
+      ) as HTMLElement | null
+      expect(element).toBeTruthy()
+      return element!
+    })
+    fireEvent.keyDown(editingContent, { key: 'Enter' })
+
+    await waitFor(() => expect(editor.getState().editingNodeId).toBeNull())
+    expect(JSON.stringify(editor.getDoc().nodes[doc.rootId].content)).toContain(
+      '"type":"link"',
+    )
+    expect(
+      warn.mock.calls.filter(([message]) =>
+        String(message).includes('Duplicate extension names found'),
+      ),
+    ).toEqual([])
+    warn.mockRestore()
+  })
+
   it('sanitizes generated HTML', () => {
     const doc = createDoc('Test')
     const editor = new MindmapEditor(doc)
@@ -225,7 +302,7 @@ describe('NodeView', () => {
       ],
     }
     const node = makeNode({ content: maliciousContent })
-    const extensions = [StarterKit, Link.configure({ openOnClick: false })]
+    const extensions = DEFAULT_TIPTAP_EXTENSIONS
     const { container } = render(
       <NodeView
         node={node}

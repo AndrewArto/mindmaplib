@@ -8,19 +8,13 @@
 
 import { memo, useEffect, useRef } from 'react'
 import { EditorContent, useEditor as useTipTapEditor } from '@tiptap/react'
-import StarterKit from '@tiptap/starter-kit'
-import Link from '@tiptap/extension-link'
 import { generateHTML } from '@tiptap/core'
 import type { Extensions } from '@tiptap/core'
 import type { NodeContent } from '@mindmaplib/core'
 import { sanitizeMindmapHtml } from './sanitize.js'
 import { toTipTapJSON, fromTipTapJSON } from './content.js'
 import type { NodeViewProps } from './types.js'
-
-const DEFAULT_EXTENSIONS: Extensions = [
-  StarterKit,
-  Link.configure({ openOnClick: false }),
-]
+import { DEFAULT_TIPTAP_EXTENSIONS } from './tiptapExtensions.js'
 
 function nodePropsEqual(prev: NodeViewProps, next: NodeViewProps): boolean {
   return (
@@ -114,7 +108,7 @@ function NodeViewComponent({
   exitEditModeRef,
   onNodeDoubleClick,
 }: NodeViewProps): React.ReactElement {
-  const extensions = tiptapExtensions ?? DEFAULT_EXTENSIONS
+  const extensions = tiptapExtensions ?? DEFAULT_TIPTAP_EXTENSIONS
 
   // Static HTML computation (memoized by React via the outer memo comparator
   // comparing node reference and extensions reference)
@@ -187,5 +181,5 @@ function NodeViewComponent({
 
 export const NodeView = memo(NodeViewComponent, nodePropsEqual)
 
-export { DEFAULT_EXTENSIONS }
+export { DEFAULT_TIPTAP_EXTENSIONS as DEFAULT_EXTENSIONS }
 export type { NodeContent }
